@@ -8,9 +8,11 @@ from sqlalchemy.orm import Session
 
 from config import UPLOAD_DIR
 from models.database import get_db
-from models.schema import Project, Image
+from models.schema import Project, Image, Annotation
 from services.flir_extractor import process_image
 from services.filename_parser import parse_filename
+from services.auto_detect import run_detection
+import numpy as np
 
 router = APIRouter(prefix="/api", tags=["images"])
 
@@ -54,6 +56,40 @@ def process_single_image(file_path: str, filename: str, project_id: int, db: Ses
     db.add(img)
     db.commit()
     db.refresh(img)
+
+    # ── Auto-detection ──────────────────────────────────────────────
+    proj = db.query(Project).filter(Project.id == project_id).first()
+    if proj and proj.model_type and proj.model_type != "none":
+        temp_matrix = np.load(img.thermal_npy_path)
+        tW = img.thermal_width or temp_matrix.shape[1]
+        tH = img.thermal_height or temp_matrix.shape[0]
+        detections = run_detection(dest_path, proj.model_type, temp_matrix, tW, tH)
+        for det in detections:
+            ann = Annotation(
+                image_id=img.id,
+                box_coords=det["box_coords"] if "box_coords" in det else {
+                    "x1": det["x1"], "y1": det["y1"],
+                    "x2": det["x2"], "y2": det["y2"],
+                },
+                source=det.get("source", "auto"),
+                version=1,
+                status="draft",
+            )
+            # Calculate temps for auto-detected box
+            x1, y1 = min(ann.box_coords["x1"], ann.box_coords["x2"]), min(ann.box_coords["y1"], ann.box_coords["y2"])
+            x2, y2 = max(ann.box_coords["x1"], ann.box_coords["x2"]), max(ann.box_coords["y1"], ann.box_coords["y2"])
+            roi = temp_matrix[max(0,y1):min(tH,y2), max(0,x1):min(tW,x2)]
+            if roi.size > 0:
+                ann.t_max = round(float(np.nanmax(roi)), 2)
+                ann.t_min = round(float(np.nanmin(roi)), 2)
+                ann.t_mean = round(float(np.nanmean(roi)), 2)
+                max_flat = np.nanargmax(roi)
+                max_ly, max_lx = np.unravel_index(max_flat, roi.shape)
+                ann.max_x = int(x1 + max_lx)
+                ann.max_y = int(y1 + max_ly)
+            db.add(ann)
+        db.commit()
+
     return img
 
 

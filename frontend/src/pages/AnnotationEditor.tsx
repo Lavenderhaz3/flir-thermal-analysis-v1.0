@@ -223,17 +223,21 @@ export default function AnnotationEditor() {
               height={canvasH}
             />
 
-            {/* Saved annotations — rendered from thermal coords */}
+            {/* Saved annotations — color by source: green=manual, blue=auto */}
             {annotations.map(ann => {
               const box = thermalToCanvas(ann.box_coords);
+              const isAuto = ann.source === "auto";
+              const color = isAuto ? "#3b82f6" : "#00ff00";
+              const fillColor = isAuto ? "rgba(59,130,246,0.08)" : "rgba(0,255,0,0.05)";
               return (
                 <Rect
                   key={ann.id}
                   id={`ann-${ann.id}`}
                   name={`ann-rect-${ann.id}`}
                   {...box}
-                  stroke="#00ff00"
+                  stroke={color}
                   strokeWidth={2}
+                  fill={fillColor}
                   draggable
                   onClick={() => setSelectedId(ann.id)}
                   onTap={() => setSelectedId(ann.id)}
@@ -248,6 +252,8 @@ export default function AnnotationEditor() {
               const box = thermalToCanvas(ann.box_coords);
               const cx = box.x + box.width / 2;
               const cy = box.y + box.height / 2;
+              const isAuto = ann.source === "auto";
+              const accentColor = isAuto ? "#3b82f6" : "#ff4444";
               return (
                 <React.Fragment key={`label-${ann.id}`}>
                   {/* Max temperature crosshair */}
@@ -257,7 +263,7 @@ export default function AnnotationEditor() {
                         x={ann.max_position.x * scaleX * fitScale}
                         y={ann.max_position.y * scaleY * fitScale}
                         radius={7}
-                        stroke="#ff4444"
+                        stroke={accentColor}
                         strokeWidth={2}
                         listening={false}
                       />
@@ -268,7 +274,7 @@ export default function AnnotationEditor() {
                           ann.max_position.x * scaleX * fitScale + 4,
                           ann.max_position.y * scaleY * fitScale,
                         ]}
-                        stroke="#ff4444"
+                        stroke={accentColor}
                         strokeWidth={2}
                         listening={false}
                       />
@@ -279,7 +285,7 @@ export default function AnnotationEditor() {
                           ann.max_position.x * scaleX * fitScale,
                           ann.max_position.y * scaleY * fitScale + 4,
                         ]}
-                        stroke="#ff4444"
+                        stroke={accentColor}
                         strokeWidth={2}
                         listening={false}
                       />
@@ -291,7 +297,7 @@ export default function AnnotationEditor() {
                     width={60}
                     text={ann.t_max != null ? `${ann.t_max.toFixed(1)}°C` : '...'}
                     fontSize={13}
-                    fill="#ff4444"
+                    fill={accentColor}
                     stroke="#000"
                     strokeWidth={3}
                     fillAfterStrokeEnabled
@@ -342,6 +348,12 @@ export default function AnnotationEditor() {
             }}
           >
             <strong>框 {ann.id}</strong>
+            {ann.source === "auto" && (
+              <span style={{
+                background: '#dbeafe', color: '#1d4ed8', fontSize: 11,
+                padding: '1px 6px', borderRadius: 3, marginLeft: 6, fontWeight: 600,
+              }}>AI</span>
+            )}
             {' · '}最高 {ann.t_max?.toFixed(1)}°C
             {' · '}平均 {ann.t_mean?.toFixed(1)}°C
             {' · '}最低 {ann.t_min?.toFixed(1)}°C

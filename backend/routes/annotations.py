@@ -84,6 +84,7 @@ def create_annotation(image_id: int, body: AnnotationCreate, db: Session = Depen
         "t_min": ann.t_min,
         "t_mean": ann.t_mean,
         "max_position": {"x": temps["max_x"], "y": temps["max_y"]},
+        "source": ann.source,
         "status": ann.status,
     }
 
@@ -116,6 +117,7 @@ def update_annotation(annotation_id: int, body: AnnotationCreate, db: Session = 
         "t_min": ann.t_min,
         "t_mean": ann.t_mean,
         "max_position": {"x": temps["max_x"], "y": temps["max_y"]},
+        "source": ann.source,
         "version": ann.version,
     }
 
@@ -145,6 +147,8 @@ def list_annotations(image_id: int, db: Session = Depends(get_db)):
             "t_max": a.t_max,
             "t_min": a.t_min,
             "t_mean": a.t_mean,
+            "max_position": {"x": a.max_x, "y": a.max_y} if a.max_x is not None else None,
+            "source": a.source,
             "status": a.status,
             "version": a.version,
         }

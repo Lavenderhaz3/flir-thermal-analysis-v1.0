@@ -57,6 +57,7 @@ class Annotation(Base):
     t_mean = Column(Float, nullable=True)
     max_x = Column(Integer, nullable=True)
     max_y = Column(Integer, nullable=True)
+    source = Column(String, default="manual")  # "manual" | "auto" — 标注来源
     status = Column(String, default="draft")
     reviewed_by = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)

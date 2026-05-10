@@ -34,6 +34,7 @@ export interface AnnotationData {
   t_min: number | null;
   t_mean: number | null;
   max_position?: { x: number; y: number };
+  source?: string;  // "manual" | "auto"
   status: string;
   version?: number;
 }
