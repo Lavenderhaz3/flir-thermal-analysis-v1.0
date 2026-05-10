@@ -9,6 +9,8 @@ class Project(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
+    model_type = Column(String, nullable=True, default=None)  # 设备识别模型: transformer/switchgear/cable/none
+    report_template_path = Column(String, nullable=True, default=None)  # 自定义 Word 模板路径
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     images = relationship(
@@ -53,6 +55,8 @@ class Annotation(Base):
     t_max = Column(Float, nullable=True)
     t_min = Column(Float, nullable=True)
     t_mean = Column(Float, nullable=True)
+    max_x = Column(Integer, nullable=True)
+    max_y = Column(Integer, nullable=True)
     status = Column(String, default="draft")
     reviewed_by = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)

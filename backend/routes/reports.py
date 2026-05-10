@@ -9,7 +9,7 @@ from services.report_generator import generate_report
 
 router = APIRouter(prefix="/api", tags=["reports"])
 
-TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "..", "templates", "report.docx")
+DEFAULT_TEMPLATE = os.path.join(os.path.dirname(__file__), "..", "templates", "report.docx")
 
 
 @router.post("/projects/{project_id}/report/")
@@ -21,10 +21,13 @@ def create_report(project_id: int, db: Session = Depends(get_db)):
     # Ensure annotations are loaded
     _ = [img.annotations for img in proj.images]
 
-    if not os.path.exists(TEMPLATE_PATH):
-        raise HTTPException(status_code=500, detail="Report template not found")
+    # Use project-specific template if available, otherwise default
+    template_path = proj.report_template_path if proj.report_template_path and os.path.exists(proj.report_template_path) else DEFAULT_TEMPLATE
 
-    buf = generate_report(proj, TEMPLATE_PATH)
+    if not os.path.exists(template_path):
+        raise HTTPException(status_code=500, detail=f"Report template not found: {template_path}")
+
+    buf = generate_report(proj, template_path)
 
     filename = f"{proj.name}_测温报告_{proj.created_at.strftime('%Y%m%d')}.docx"
     return StreamingResponse(

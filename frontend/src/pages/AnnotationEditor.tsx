@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { Stage, Layer, Image as KonvaImage, Rect, Transformer, Text } from 'react-konva';
+import { Stage, Layer, Image as KonvaImage, Rect, Transformer, Text, Circle, Line } from 'react-konva';
 import Konva from 'konva';
 import api from '../api/client';
 import type { ImageDetail, AnnotationData, BoxCoords } from '../types';
@@ -37,31 +37,75 @@ export default function AnnotationEditor() {
     img.onload = () => setImgObj(img);
   }, [image]);
 
+  // Bind Transformer to selected rect
+  useEffect(() => {
+    if (!trRef.current || !stageRef.current) return;
+    if (selectedId == null) {
+      trRef.current.nodes([]);
+      return;
+    }
+    const node = stageRef.current.findOne(`#ann-${selectedId}`);
+    if (node) trRef.current.nodes([node]);
+    else trRef.current.nodes([]);
+  }, [selectedId, annotations]);
+
   if (!image || !imgObj) return <div style={{ padding: 20 }}>Loading...</div>;
 
-  // Scale: display coords → thermal matrix coords
-  const scaleX = (image.display_width || imgObj.naturalWidth) / (image.thermal_width || imgObj.naturalWidth);
-  const scaleY = (image.display_height || imgObj.naturalHeight) / (image.thermal_height || imgObj.naturalHeight);
+  // Scale factors: thermal matrix ↔ display image
+  const dW = image.display_width || imgObj.naturalWidth;
+  const dH = image.display_height || imgObj.naturalHeight;
+  const tW = image.thermal_width || imgObj.naturalWidth;
+  const tH = image.thermal_height || imgObj.naturalHeight;
+  const scaleX = dW / tW;  // thermal → display
+  const scaleY = dH / tH;
 
   // Fit canvas to viewport
   const maxW = Math.min(window.innerWidth - 40, imgObj.naturalWidth);
   const maxH = Math.min(window.innerHeight - 160, imgObj.naturalHeight);
   const fitScale = Math.min(maxW / imgObj.naturalWidth, maxH / imgObj.naturalHeight, 1);
 
-  const toThermalCoords = (box: BoxCoords): BoxCoords => ({
+  const canvasW = imgObj.naturalWidth * fitScale;
+  const canvasH = imgObj.naturalHeight * fitScale;
+
+  // ── Coordinate helpers ───────────────────────────────────────────
+
+  /** Convert display-image coords → thermal-matrix coords */
+  const toThermal = (box: BoxCoords): BoxCoords => ({
     x1: Math.round(box.x1 / scaleX),
     y1: Math.round(box.y1 / scaleY),
     x2: Math.round(box.x2 / scaleX),
     y2: Math.round(box.y2 / scaleY),
   });
 
+  /** Convert thermal-matrix coords → canvas pixel coords (for Konva) */
+  const thermalToCanvas = (box: BoxCoords) => ({
+    x: Math.min(box.x1, box.x2) * scaleX * fitScale,
+    y: Math.min(box.y1, box.y2) * scaleY * fitScale,
+    width: Math.abs(box.x2 - box.x1) * scaleX * fitScale,
+    height: Math.abs(box.y2 - box.y1) * scaleY * fitScale,
+  });
+
+  /** Convert display-image coords → canvas pixel coords (for drawing) */
+  const displayToCanvas = (box: BoxCoords) => ({
+    x: Math.min(box.x1, box.x2) * fitScale,
+    y: Math.min(box.y1, box.y2) * fitScale,
+    width: Math.abs(box.x2 - box.x1) * fitScale,
+    height: Math.abs(box.y2 - box.y1) * fitScale,
+  });
+
+  // ── Mouse handlers ───────────────────────────────────────────────
+
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    // Click on empty area → start drawing new box
-    if (e.target === e.target.getStage()) {
+    // Start drawing if clicking on stage, image, or empty area (not on an annotation rect)
+    const targetName = e.target.name();
+    const isAnnotation = targetName && targetName.startsWith('ann-rect-');
+    if (!isAnnotation) {
       setSelectedId(null);
       const pos = e.target.getStage()!.getPointerPosition()!;
+      const ix = pos.x / fitScale;
+      const iy = pos.y / fitScale;
       setDrawing(true);
-      setNewBox({ x1: pos.x / fitScale, y1: pos.y / fitScale, x2: pos.x / fitScale, y2: pos.y / fitScale });
+      setNewBox({ x1: ix, y1: iy, x2: ix, y2: iy });
     }
   };
 
@@ -75,30 +119,41 @@ export default function AnnotationEditor() {
     if (!drawing || !newBox) return;
     setDrawing(false);
 
-    // Convert to thermal coords and save
-    const thermalCoords = toThermalCoords(newBox);
+    // Require minimum box size
+    const dw = Math.abs(newBox.x2 - newBox.x1);
+    const dh = Math.abs(newBox.y2 - newBox.y1);
+    if (dw < 10 || dh < 10) {
+      setNewBox(null);
+      return;
+    }
+
+    const thermalCoords = toThermal(newBox);
     try {
       const res = await api.post(`/images/${imageId}/annotations/`, {
         box_coords: thermalCoords,
       });
       setAnnotations(prev => [...prev, res.data]);
+      setSelectedId(res.data.id);
     } catch (err) {
       console.error('Failed to save annotation', err);
     }
     setNewBox(null);
   };
 
+  // ── Drag / Transform handlers (for existing annotations) ────────
+
   const handleDragEnd = async (annId: number, e: Konva.KonvaEventObject<DragEvent>) => {
     const node = e.target;
+    // Node position is in canvas coords → convert to display-image coords
     const box: BoxCoords = {
       x1: node.x() / fitScale,
       y1: node.y() / fitScale,
-      x2: (node.x() + node.width()) / fitScale,
-      y2: (node.y() + node.height()) / fitScale,
+      x2: (node.x() + node.width() * node.scaleX()) / fitScale,
+      y2: (node.y() + node.height() * node.scaleY()) / fitScale,
     };
     try {
       const res = await api.put(`/annotations/${annId}`, {
-        box_coords: toThermalCoords(box),
+        box_coords: toThermal(box),
       });
       setAnnotations(prev => prev.map(a => a.id === annId ? res.data : a));
     } catch (err) {
@@ -108,20 +163,20 @@ export default function AnnotationEditor() {
 
   const handleTransformEnd = async (annId: number, e: Konva.KonvaEventObject<Event>) => {
     const node = e.target;
-    const scaleX_node = node.scaleX();
-    const scaleY_node = node.scaleY();
+    const sx = node.scaleX();
+    const sy = node.scaleY();
     node.scaleX(1);
     node.scaleY(1);
 
     const box: BoxCoords = {
       x1: node.x() / fitScale,
       y1: node.y() / fitScale,
-      x2: (node.x() + node.width() * scaleX_node) / fitScale,
-      y2: (node.y() + node.height() * scaleY_node) / fitScale,
+      x2: (node.x() + node.width() * sx) / fitScale,
+      y2: (node.y() + node.height() * sy) / fitScale,
     };
     try {
       const res = await api.put(`/annotations/${annId}`, {
-        box_coords: toThermalCoords(box),
+        box_coords: toThermal(box),
       });
       setAnnotations(prev => prev.map(a => a.id === annId ? res.data : a));
     } catch (err) {
@@ -129,12 +184,13 @@ export default function AnnotationEditor() {
     }
   };
 
-  const displayBox = (box: BoxCoords) => ({
-    x: Math.min(box.x1, box.x2) * fitScale,
-    y: Math.min(box.y1, box.y2) * fitScale,
-    width: Math.abs(box.x2 - box.x1) * fitScale,
-    height: Math.abs(box.y2 - box.y1) * fitScale,
-  });
+  const handleDelete = async (annId: number) => {
+    await api.delete(`/annotations/${annId}`);
+    if (selectedId === annId) setSelectedId(null);
+    loadAnnotations();
+  };
+
+  // ── Render ───────────────────────────────────────────────────────
 
   return (
     <div style={{ padding: 10 }}>
@@ -144,89 +200,162 @@ export default function AnnotationEditor() {
         {' · '}最高温: {image.t_max?.toFixed(1)}°C
         {' · '}最低温: {image.t_min?.toFixed(1)}°C
         {' · '}平均温: {image.t_mean?.toFixed(1)}°C
+        {tW !== dW && (
+          <span style={{ color: '#999', marginLeft: 8 }}>
+            (热分辨率: {tW}×{tH}, 显示: {dW}×{dH})
+          </span>
+        )}
       </p>
-      <div style={{ border: '1px solid #ccc', display: 'inline-block' }}>
+
+      <div style={{ border: '1px solid #ccc', display: 'inline-block', background: '#222' }}>
         <Stage
-          width={imgObj.naturalWidth * fitScale}
-          height={imgObj.naturalHeight * fitScale}
+          width={canvasW}
+          height={canvasH}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           ref={stageRef}
         >
           <Layer>
-            <KonvaImage image={imgObj}
-              width={imgObj.naturalWidth * fitScale}
-              height={imgObj.naturalHeight * fitScale}
+            <KonvaImage
+              image={imgObj}
+              width={canvasW}
+              height={canvasH}
             />
 
-            {/* Saved annotations */}
+            {/* Saved annotations — rendered from thermal coords */}
             {annotations.map(ann => {
-              const box = displayBox(ann.box_coords);
+              const box = thermalToCanvas(ann.box_coords);
               return (
                 <Rect
                   key={ann.id}
                   id={`ann-${ann.id}`}
+                  name={`ann-rect-${ann.id}`}
                   {...box}
                   stroke="#00ff00"
                   strokeWidth={2}
                   draggable
                   onClick={() => setSelectedId(ann.id)}
+                  onTap={() => setSelectedId(ann.id)}
                   onDragEnd={(e) => handleDragEnd(ann.id, e)}
                   onTransformEnd={(e) => handleTransformEnd(ann.id, e)}
                 />
               );
             })}
 
-            {/* Temperature labels */}
+            {/* Temperature labels + max-point crosshair */}
             {annotations.map(ann => {
-              const box = displayBox(ann.box_coords);
+              const box = thermalToCanvas(ann.box_coords);
+              const cx = box.x + box.width / 2;
+              const cy = box.y + box.height / 2;
               return (
-                <Text
-                  key={`label-${ann.id}`}
-                  x={box.x}
-                  y={box.y - 18}
-                  text={ann.t_max != null ? `${ann.t_max.toFixed(1)}°C` : '...'}
-                  fontSize={14}
-                  fill="#00ff00"
-                  stroke="#000"
-                  strokeWidth={2}
-                  fillAfterStrokeEnabled
-                />
+                <React.Fragment key={`label-${ann.id}`}>
+                  {/* Max temperature crosshair */}
+                  {ann.max_position && (
+                    <>
+                      <Circle
+                        x={ann.max_position.x * scaleX * fitScale}
+                        y={ann.max_position.y * scaleY * fitScale}
+                        radius={7}
+                        stroke="#ff4444"
+                        strokeWidth={2}
+                        listening={false}
+                      />
+                      <Line
+                        points={[
+                          ann.max_position.x * scaleX * fitScale - 4,
+                          ann.max_position.y * scaleY * fitScale,
+                          ann.max_position.x * scaleX * fitScale + 4,
+                          ann.max_position.y * scaleY * fitScale,
+                        ]}
+                        stroke="#ff4444"
+                        strokeWidth={2}
+                        listening={false}
+                      />
+                      <Line
+                        points={[
+                          ann.max_position.x * scaleX * fitScale,
+                          ann.max_position.y * scaleY * fitScale - 4,
+                          ann.max_position.x * scaleX * fitScale,
+                          ann.max_position.y * scaleY * fitScale + 4,
+                        ]}
+                        stroke="#ff4444"
+                        strokeWidth={2}
+                        listening={false}
+                      />
+                    </>
+                  )}
+                  <Text
+                    x={cx - 30}
+                    y={Math.max(0, box.y - 22)}
+                    width={60}
+                    text={ann.t_max != null ? `${ann.t_max.toFixed(1)}°C` : '...'}
+                    fontSize={13}
+                    fill="#ff4444"
+                    stroke="#000"
+                    strokeWidth={3}
+                    fillAfterStrokeEnabled
+                    align="center"
+                    listening={false}
+                  />
+                </React.Fragment>
               );
             })}
 
-            {/* Drawing box */}
+            {/* Drawing box (in-progress, display coords) */}
             {drawing && newBox && (
-              <Rect {...displayBox(newBox)} stroke="#ffff00" strokeWidth={2} dash={[4, 4]} />
-            )}
-
-            {/* Transformer for selected annotation */}
-            {selectedId != null && (
-              <Transformer
-                ref={trRef}
-                boundBoxFunc={(oldBox, newBox) =>
-                  newBox.width < 20 || newBox.height < 20 ? oldBox : newBox
-                }
+              <Rect
+                {...displayToCanvas(newBox)}
+                stroke="#ffff00"
+                strokeWidth={2}
+                dash={[6, 4]}
+                listening={false}
               />
             )}
+
+            {/* Transformer — controlled by useEffect */}
+            <Transformer
+              ref={trRef}
+              rotateEnabled={false}
+              keepRatio={false}
+              enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']}
+              boundBoxFunc={(oldBox, newBox) =>
+                newBox.width < 20 || newBox.height < 20 ? oldBox : newBox
+              }
+            />
           </Layer>
         </Stage>
       </div>
 
       {/* Annotation list */}
-      <div style={{ marginTop: 16 }}>
+      <div style={{ marginTop: 16, maxWidth: 600 }}>
         <h3>标注列表</h3>
         {annotations.map(ann => (
-          <div key={ann.id} style={{ marginBottom: 8, padding: 8, background: '#f8f8f8', borderRadius: 4 }}>
-            框 {ann.id}: 最高 {ann.t_max?.toFixed(1)}°C / 最低 {ann.t_min?.toFixed(1)}°C / 平均 {ann.t_mean?.toFixed(1)}°C
-            {' '}<button onClick={async () => {
-              await api.delete(`/annotations/${ann.id}`);
-              loadAnnotations();
-            }} style={{ color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer' }}>删除</button>
+          <div
+            key={ann.id}
+            onClick={() => setSelectedId(ann.id)}
+            style={{
+              marginBottom: 8, padding: '8px 12px',
+              background: selectedId === ann.id ? '#e0f2fe' : '#f8f8f8',
+              borderRadius: 4, cursor: 'pointer',
+              border: selectedId === ann.id ? '2px solid #2563eb' : '1px solid transparent',
+            }}
+          >
+            <strong>框 {ann.id}</strong>
+            {' · '}最高 {ann.t_max?.toFixed(1)}°C
+            {' · '}平均 {ann.t_mean?.toFixed(1)}°C
+            {' · '}最低 {ann.t_min?.toFixed(1)}°C
+            <button
+              onClick={(e) => { e.stopPropagation(); handleDelete(ann.id); }}
+              style={{ marginLeft: 12, color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer' }}
+            >
+              删除
+            </button>
           </div>
         ))}
-        {annotations.length === 0 && <div style={{ color: '#999' }}>在热像图上拖拽鼠标画框选择设备区域</div>}
+        {annotations.length === 0 && (
+          <div style={{ color: '#999' }}>在热像图上按住鼠标拖拽画框，框选设备区域</div>
+        )}
       </div>
     </div>
   );

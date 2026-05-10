@@ -20,8 +20,8 @@ class AnnotationCreate(BaseModel):
     box_coords: BoxCoords
 
 
-def calc_box_temps(temp_matrix: np.ndarray, coords: BoxCoords) -> tuple[float, float, float]:
-    """Calculate t_max, t_min, t_mean within box region of temperature matrix."""
+def calc_box_temps(temp_matrix: np.ndarray, coords: BoxCoords) -> dict:
+    """Calculate t_max, t_min, t_mean + max position within box region."""
     x1, y1 = min(coords.x1, coords.x2), min(coords.y1, coords.y2)
     x2, y2 = max(coords.x1, coords.x2), max(coords.y1, coords.y2)
 
@@ -34,11 +34,20 @@ def calc_box_temps(temp_matrix: np.ndarray, coords: BoxCoords) -> tuple[float, f
     if roi.size == 0:
         raise HTTPException(status_code=400, detail="Box has zero area on temperature matrix")
 
-    return (
-        round(float(np.nanmax(roi)), 2),
-        round(float(np.nanmin(roi)), 2),
-        round(float(np.nanmean(roi)), 2),
-    )
+    # Find max position within ROI (local coords)
+    max_flat = np.nanargmax(roi)
+    max_ly, max_lx = np.unravel_index(max_flat, roi.shape)
+    # Convert to global thermal matrix coords
+    max_py = int(y1 + max_ly)
+    max_px = int(x1 + max_lx)
+
+    return {
+        "t_max": round(float(np.nanmax(roi)), 2),
+        "t_min": round(float(np.nanmin(roi)), 2),
+        "t_mean": round(float(np.nanmean(roi)), 2),
+        "max_x": max_px,
+        "max_y": max_py,
+    }
 
 
 @router.post("/images/{image_id}/annotations/")
@@ -51,15 +60,17 @@ def create_annotation(image_id: int, body: AnnotationCreate, db: Session = Depen
 
     # Calculate temperatures within the box
     temp_matrix = np.load(img.thermal_npy_path)
-    t_max, t_min, t_mean = calc_box_temps(temp_matrix, body.box_coords)
+    temps = calc_box_temps(temp_matrix, body.box_coords)
 
     ann = Annotation(
         image_id=image_id,
         box_coords=body.box_coords.model_dump(),
         version=1,
-        t_max=t_max,
-        t_min=t_min,
-        t_mean=t_mean,
+        t_max=temps["t_max"],
+        t_min=temps["t_min"],
+        t_mean=temps["t_mean"],
+        max_x=temps["max_x"],
+        max_y=temps["max_y"],
         status="draft",
     )
     db.add(ann)
@@ -72,6 +83,7 @@ def create_annotation(image_id: int, body: AnnotationCreate, db: Session = Depen
         "t_max": ann.t_max,
         "t_min": ann.t_min,
         "t_mean": ann.t_mean,
+        "max_position": {"x": temps["max_x"], "y": temps["max_y"]},
         "status": ann.status,
     }
 
@@ -87,12 +99,12 @@ def update_annotation(annotation_id: int, body: AnnotationCreate, db: Session = 
         raise HTTPException(status_code=400, detail="No thermal data")
 
     temp_matrix = np.load(img.thermal_npy_path)
-    t_max, t_min, t_mean = calc_box_temps(temp_matrix, body.box_coords)
+    temps = calc_box_temps(temp_matrix, body.box_coords)
 
     ann.box_coords = body.box_coords.model_dump()
-    ann.t_max = t_max
-    ann.t_min = t_min
-    ann.t_mean = t_mean
+    ann.t_max = temps["t_max"]
+    ann.t_min = temps["t_min"]
+    ann.t_mean = temps["t_mean"]
     ann.version += 1
     db.commit()
     db.refresh(ann)
@@ -103,6 +115,7 @@ def update_annotation(annotation_id: int, body: AnnotationCreate, db: Session = 
         "t_max": ann.t_max,
         "t_min": ann.t_min,
         "t_mean": ann.t_mean,
+        "max_position": {"x": temps["max_x"], "y": temps["max_y"]},
         "version": ann.version,
     }
 
