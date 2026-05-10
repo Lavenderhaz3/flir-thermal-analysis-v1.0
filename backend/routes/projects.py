@@ -95,7 +95,7 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
                 "t_min": i.t_min,
                 "t_max": i.t_max,
                 "t_mean": i.t_mean,
-                "preview_url": f"/uploads/{proj.id}/{i.filename}",
+                "preview_url": f"/uploads/{proj.id}/{i.date or 'unknown'}/{i.equipment or 'unknown'}/{i.filename}",
             }
             for i in proj.images
         ],

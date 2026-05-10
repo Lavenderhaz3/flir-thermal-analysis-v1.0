@@ -18,23 +18,29 @@ router = APIRouter(prefix="/api", tags=["images"])
 
 
 def process_single_image(file_path: str, filename: str, project_id: int, db: Session) -> Image:
-    """Process a single FLIR JPEG: extract temps, save artifacts, create DB record."""
+    """Process a single FLIR JPEG: extract temps, save artifacts, create DB record.
+
+    Files are organized as: uploads/{project_id}/{date}/{equipment}/{filename}
+    """
+    # Parse filename for date/equipment
+    parsed = parse_filename(filename)
+    date_str = parsed["date"] if parsed else "unknown"
+    equip_str = parsed["equip_id"] if parsed else "unknown"
+
+    # Organized directory: uploads/{project_id}/{date}/{equipment}/
     proj_dir = os.path.join(UPLOAD_DIR, str(project_id))
-    os.makedirs(proj_dir, exist_ok=True)
+    org_dir = os.path.join(proj_dir, date_str, equip_str)
+    os.makedirs(org_dir, exist_ok=True)
 
     # Save original file
-    dest_path = os.path.join(proj_dir, filename)
+    dest_path = os.path.join(org_dir, filename)
     shutil.copy(file_path, dest_path)
 
-    # FLIR extraction
-    output_subdir = os.path.join(proj_dir, os.path.splitext(filename)[0])
+    # FLIR extraction → same organized directory
     try:
-        result = process_image(dest_path, output_subdir)
+        result = process_image(dest_path, org_dir)
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=f"FLIR processing failed: {e}")
-
-    # Parse filename
-    parsed = parse_filename(filename)
 
     img = Image(
         project_id=project_id,
@@ -153,7 +159,7 @@ def get_image(image_id: int, db: Session = Depends(get_db)):
         "thermal_height": img.thermal_height,
         "display_width": img.display_width,
         "display_height": img.display_height,
-        "preview_url": f"/uploads/{img.project_id}/{img.filename}",
+        "preview_url": f"/uploads/{img.project_id}/{img.date or 'unknown'}/{img.equipment or 'unknown'}/{img.filename}",
         "annotations": [
             {
                 "id": a.id,
