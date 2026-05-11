@@ -9,13 +9,31 @@ class Project(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
-    model_type = Column(String, nullable=True, default=None)  # 设备识别模型: transformer/switchgear/cable/none
-    report_template_path = Column(String, nullable=True, default=None)  # 自定义 Word 模板路径
+    model_type = Column(String, nullable=True, default=None)
+    report_template_path = Column(String, nullable=True, default=None)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     images = relationship(
         "Image", back_populates="project", cascade="all, delete-orphan"
     )
+    equipment_list = relationship(
+        "Equipment", back_populates="project", cascade="all, delete-orphan"
+    )
+
+
+class Equipment(Base):
+    """Track a physical device across projects by name + area."""
+    __tablename__ = "equipment"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    name = Column(String, nullable=False)       # e.g. "T01"
+    area = Column(String, nullable=True)        # e.g. "主变区"
+    device_type = Column(String, nullable=True)  # e.g. "transformer"
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    project = relationship("Project", back_populates="equipment_list")
+    images = relationship("Image", back_populates="equip")
 
 
 class Image(Base):
@@ -23,6 +41,7 @@ class Image(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    equipment_id = Column(Integer, ForeignKey("equipment.id"), nullable=True)
     filename = Column(String, nullable=False)
     original_path = Column(String, nullable=False)
     thermal_npy_path = Column(String, nullable=True)
@@ -37,10 +56,11 @@ class Image(Base):
     thermal_height = Column(Integer, nullable=True)
     display_width = Column(Integer, nullable=True)
     display_height = Column(Integer, nullable=True)
-    atmospheric_temp = Column(Float, nullable=True)   # 环境温度(°C), from FLIR EXIF
+    atmospheric_temp = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     project = relationship("Project", back_populates="images")
+    equip = relationship("Equipment", back_populates="images")
     annotations = relationship(
         "Annotation", back_populates="image", cascade="all, delete-orphan"
     )

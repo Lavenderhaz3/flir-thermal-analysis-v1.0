@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from config import UPLOAD_DIR
 from models.database import get_db
-from models.schema import Project
+from models.schema import Project, Image
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -126,3 +126,47 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
     db.delete(proj)
     db.commit()
     return {"ok": True}
+
+
+from collections import defaultdict
+
+
+@router.get("/{project_id}/trend")
+def get_project_trend(project_id: int, db: Session = Depends(get_db)):
+    """Return max temperature trend over time for each equipment in the project.
+
+    Each data point includes date, t_max, image_id so the frontend can
+    navigate to the specific image on click.
+    """
+    proj = db.query(Project).filter(Project.id == project_id).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    images = (
+        db.query(Image)
+        .filter(Image.project_id == project_id, Image.date.isnot(None))
+        .order_by(Image.date)
+        .all()
+    )
+
+    # Group by equipment, sorted by date
+    by_equipment = defaultdict(list)
+    for img in images:
+        equip = img.equipment or "unknown"
+        by_equipment[equip].append({
+            "date": img.date,
+            "t_max": round(img.t_max, 2) if img.t_max else None,
+            "t_mean": round(img.t_mean, 2) if img.t_mean else None,
+            "image_id": img.id,
+            "area": img.area,
+            "filename": img.filename,
+        })
+
+    # Sort each equipment's points by date
+    for equip in by_equipment:
+        by_equipment[equip].sort(key=lambda x: x["date"] or "")
+
+    return {
+        "project_id": project_id,
+        "equipment_trends": dict(by_equipment),
+    }

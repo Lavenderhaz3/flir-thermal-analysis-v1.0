@@ -134,6 +134,9 @@ def delete_annotation(annotation_id: int, db: Session = Depends(get_db)):
 
 @router.get("/images/{image_id}/annotations/")
 def list_annotations(image_id: int, db: Session = Depends(get_db)):
+    img = db.query(Image).filter(Image.id == image_id).first()
+    if not img:
+        raise HTTPException(status_code=404, detail="Image not found")
     anns = (
         db.query(Annotation)
         .filter(Annotation.image_id == image_id)

@@ -3,7 +3,8 @@ import { useParams } from 'react-router-dom';
 import { Stage, Layer, Image as KonvaImage, Rect, Transformer, Text, Circle, Line } from 'react-konva';
 import Konva from 'konva';
 import api from '../api/client';
-import type { ImageDetail, AnnotationData, BoxCoords } from '../types';
+import type { ImageDetail, AnnotationData, BoxCoords, EquipmentTrend } from '../types';
+import TrendChart from '../components/TrendChart';
 
 export default function AnnotationEditor() {
   const { projectId, imageId } = useParams<{ projectId: string; imageId: string }>();
@@ -15,10 +16,20 @@ export default function AnnotationEditor() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const stageRef = useRef<Konva.Stage>(null);
   const trRef = useRef<Konva.Transformer>(null);
+  const [trendData, setTrendData] = useState<EquipmentTrend | null>(null);
 
   // Load image data
   useEffect(() => {
-    api.get(`/images/${imageId}`).then(res => setImage(res.data));
+    api.get(`/images/${imageId}`).then(res => {
+      const img: ImageDetail = res.data;
+      setImage(img);
+      // Load trend data for this equipment (cross-project)
+      if (img.equipment_id) {
+        api.get(`/equipment/${img.equipment_id}/trend`)
+          .then(r => setTrendData(r.data))
+          .catch(() => setTrendData(null));
+      }
+    });
   }, [imageId]);
 
   // Load annotations
@@ -223,15 +234,16 @@ export default function AnnotationEditor() {
         )}
       </p>
 
-      <div style={{ border: '1px solid #ccc', display: 'inline-block', background: '#222' }}>
-        <Stage
-          width={canvasW}
-          height={canvasH}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          ref={stageRef}
-        >
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div style={{ border: '1px solid #ccc', background: '#222', flexShrink: 0 }}>
+          <Stage
+            width={canvasW}
+            height={canvasH}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            ref={stageRef}
+          >
           <Layer>
             <KonvaImage
               image={imgObj}
@@ -348,7 +360,18 @@ export default function AnnotationEditor() {
         </Stage>
       </div>
 
-      {/* Annotation list */}
+      {/* Temperature trend chart — right side */}
+      {trendData && trendData.points && trendData.points.length > 0 && (
+        <div style={{ flex: '1 1 280px', minWidth: 260, maxWidth: 380 }}>
+          <TrendChart
+            trend={trendData}
+            currentImageId={Number(imageId)}
+          />
+        </div>
+      )}
+    </div>
+
+    {/* Annotation list */}
       <div style={{ marginTop: 16, maxWidth: 600 }}>
         <h3>标注列表</h3>
         {annotations.map(ann => (

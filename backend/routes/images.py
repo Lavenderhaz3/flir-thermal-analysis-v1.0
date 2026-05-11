@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from config import UPLOAD_DIR
 from models.database import get_db
-from models.schema import Project, Image, Annotation
+from models.schema import Project, Image, Annotation, Equipment
 from services.flir_extractor import process_image
 from services.filename_parser import parse_filename
 from services.auto_detect import run_detection
@@ -42,8 +42,35 @@ def process_single_image(file_path: str, filename: str, project_id: int, db: Ses
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=f"FLIR processing failed: {e}")
 
+    # ── Auto-create / link Equipment (global match across projects) ─
+    equip_id = None
+    proj = db.query(Project).filter(Project.id == project_id).first()
+    if parsed and parsed.get("equip_id"):
+        equip_name = parsed["equip_id"]
+        equip_area = parsed.get("area")
+        # Find existing equipment by name + area GLOBALLY
+        equip = (
+            db.query(Equipment)
+            .filter(
+                Equipment.name == equip_name,
+                Equipment.area == equip_area,
+            )
+            .first()
+        )
+        if not equip:
+            equip = Equipment(
+                project_id=project_id,
+                name=equip_name,
+                area=equip_area,
+                device_type=proj.model_type if proj and proj.model_type != "none" else None,
+            )
+            db.add(equip)
+            db.flush()
+        equip_id = equip.id
+
     img = Image(
         project_id=project_id,
+        equipment_id=equip_id,
         filename=filename,
         original_path=dest_path,
         thermal_npy_path=result["thermal_npy_path"],
@@ -149,6 +176,7 @@ def get_image(image_id: int, db: Session = Depends(get_db)):
     return {
         "id": img.id,
         "project_id": img.project_id,
+        "equipment_id": img.equipment_id,
         "filename": img.filename,
         "date": img.date,
         "area": img.area,

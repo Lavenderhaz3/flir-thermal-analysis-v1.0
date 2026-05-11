@@ -47,11 +47,13 @@ from routes.projects import router as projects_router
 from routes.images import router as images_router
 from routes.annotations import router as annotations_router
 from routes.reports import router as reports_router
+from routes.equipment import router as equipment_router
 
 app.include_router(projects_router)
 app.include_router(images_router)
 app.include_router(annotations_router)
 app.include_router(reports_router)
+app.include_router(equipment_router)
 
 # ── Static files ──────────────────────────────────────────────────
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")

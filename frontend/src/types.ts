@@ -21,11 +21,31 @@ export interface ImageSummary {
 
 export interface ImageDetail extends ImageSummary {
   project_id: number;
+  equipment_id: number | null;
   thermal_width: number;
   thermal_height: number;
   display_width: number;
   display_height: number;
   annotations: AnnotationData[];
+}
+
+export interface TrendPoint {
+  date: string;
+  t_max: number | null;
+  t_mean: number | null;
+  image_id: number;
+  project_id: number;
+  project_name: string | null;
+  area: string | null;
+  filename: string;
+}
+
+export interface EquipmentTrend {
+  equipment_id: number;
+  equipment_name: string;
+  area: string | null;
+  device_type: string | null;
+  points: TrendPoint[];
 }
 
 export interface AnnotationData {

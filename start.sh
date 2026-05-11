@@ -32,8 +32,8 @@ echo -e "${CYAN}═════════════════════�
 
 # ── Kill stale processes ─────────────────────────────────
 echo -e "${YELLOW}[1/4] Cleaning up old processes...${NC}"
-lsof -ti:8000 | xargs kill -9 2>/dev/null || true
-lsof -ti:5173 | xargs kill -9 2>/dev/null || true
+fuser -k 8000/tcp 2>/dev/null || true
+fuser -k 5173/tcp 2>/dev/null || true
 sleep 1
 
 # ── Check dependencies ───────────────────────────────────
@@ -49,8 +49,8 @@ if ! command -v node &>/dev/null; then
     exit 1
 fi
 
-if ! python3 -c "import fastapi" 2>/dev/null; then
-    echo -e "${RED}ERROR: FastAPI not installed. Run: pip install fastapi uvicorn${NC}"
+if ! "$ROOT/backend/venv/bin/python3" -c "import fastapi" 2>/dev/null; then
+    echo -e "${RED}ERROR: FastAPI not installed. Run: cd backend && source venv/bin/activate && pip install -r requirements.txt${NC}"
     exit 1
 fi
 
@@ -62,7 +62,7 @@ fi
 # ── Start backend ────────────────────────────────────────
 echo -e "${YELLOW}[3/4] Starting backend (port 8000)...${NC}"
 cd "$ROOT/backend"
-python3 -m uvicorn main:app --port 8000 &
+"$ROOT/backend/venv/bin/python3" -m uvicorn main:app --port 8000 &
 BACKEND_PID=$!
 
 # ── Start frontend ───────────────────────────────────────
@@ -90,7 +90,12 @@ echo -e "${GREEN}  API docs: http://localhost:8000/docs${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════${NC}"
 echo -e "  Press ${RED}Ctrl+C${NC} to stop all services\n"
 
-open "http://localhost:5173" 2>/dev/null || true
+# WSL: use wslview to open browser, fallback to xdg-open
+if command -v wslview &>/dev/null; then
+    wslview "http://localhost:5173"
+elif command -v xdg-open &>/dev/null; then
+    xdg-open "http://localhost:5173" 2>/dev/null || true
+fi
 
 # ── Keep alive ───────────────────────────────────────────
 wait
