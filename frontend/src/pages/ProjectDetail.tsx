@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import type { ImageSummary, Project } from '../types';
@@ -6,6 +6,7 @@ import type { ImageSummary, Project } from '../types';
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [project, setProject] = useState<Project | null>(null);
   const [uploading, setUploading] = useState(false);
   const [showReportForm, setShowReportForm] = useState(false);
@@ -24,12 +25,23 @@ export default function ProjectDetail() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     setUploading(true);
+    let errors = 0;
     for (let i = 0; i < files.length; i++) {
       const form = new FormData();
       form.append('file', files[i]);
-      await api.post(`/projects/${id}/images/`, form);
+      try {
+        await api.post(`/projects/${id}/images/`, form);
+      } catch (err) {
+        errors++;
+        console.error(`Upload failed: ${files[i].name}`, err);
+      }
     }
     setUploading(false);
+    // Reset input so the same file can be re-uploaded
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (errors > 0) {
+      alert(`${errors}/${files.length} 个文件上传失败，请检查文件是否为 FLIR 红外 JPEG 格式`);
+    }
     load();
   };
 
@@ -78,6 +90,7 @@ export default function ProjectDetail() {
         }}>
           {uploading ? '上传中...' : '上传图片 (JPG/ZIP)'}
           <input type="file" accept=".jpg,.jpeg,.zip" multiple
+            ref={fileInputRef}
             onChange={handleUpload} style={{ display: 'none' }}
             disabled={uploading}
           />
