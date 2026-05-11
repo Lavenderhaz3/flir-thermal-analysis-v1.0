@@ -41,6 +41,22 @@ async def create_project(
         with open(template_path, "wb") as f:
             shutil.copyfileobj(template.file, f)
 
+    # ── Auto-cleanup: keep at most 20 projects ─────────────────────
+    max_projects = 20
+    existing_count = db.query(Project).count()
+    if existing_count >= max_projects:
+        oldest = (
+            db.query(Project)
+            .order_by(Project.created_at.asc())
+            .first()
+        )
+        if oldest:
+            # Remove uploaded files for the oldest project
+            old_upload_dir = os.path.join(UPLOAD_DIR, str(oldest.id))
+            if os.path.isdir(old_upload_dir):
+                shutil.rmtree(old_upload_dir, ignore_errors=True)
+            db.delete(oldest)
+
     proj = Project(
         name=name,
         model_type=model_type,

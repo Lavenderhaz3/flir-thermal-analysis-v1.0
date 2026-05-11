@@ -8,6 +8,10 @@ export default function ProjectDetail() {
   const navigate = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [showReportForm, setShowReportForm] = useState(false);
+  const [normalTemp, setNormalTemp] = useState('');
+  const [ambientOverride, setAmbientOverride] = useState('');
+  const [generating, setGenerating] = useState(false);
 
   const load = useCallback(async () => {
     const res = await api.get(`/projects/${id}`);
@@ -30,13 +34,32 @@ export default function ProjectDetail() {
   };
 
   const handleReport = async () => {
-    const res = await api.post(`/projects/${id}/report/`, null, { responseType: 'blob' });
-    const url = URL.createObjectURL(res.data);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${project?.name ?? 'report'}_测温报告.docx`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const normal = parseFloat(normalTemp);
+    if (isNaN(normal)) {
+      alert('请输入有效的正常设备温度');
+      return;
+    }
+    setGenerating(true);
+    try {
+      const body: Record<string, unknown> = { normal_temp: normal };
+      const ambOverride = parseFloat(ambientOverride);
+      if (!isNaN(ambOverride)) {
+        body.ambient_temp_override = ambOverride;
+      }
+      const res = await api.post(`/projects/${id}/report/`, body, { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${project?.name ?? 'report'}_测温报告.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setShowReportForm(false);
+    } catch (err) {
+      console.error('Report generation failed', err);
+      alert('报告生成失败，请检查后端是否正常运行');
+    } finally {
+      setGenerating(false);
+    }
   };
 
   if (!project) return <div style={{ padding: 20 }}>Loading...</div>;
@@ -60,12 +83,82 @@ export default function ProjectDetail() {
           />
         </label>
         {images.length > 0 && (
-          <button onClick={handleReport}
-            style={{ padding: '8px 16px', background: '#059669', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+          <button
+            onClick={() => setShowReportForm(!showReportForm)}
+            style={{ padding: '8px 16px', background: '#059669', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+          >
             生成报告 (.docx)
           </button>
         )}
       </div>
+
+      {/* Report parameter form */}
+      {showReportForm && (
+        <div style={{
+          marginBottom: 20, padding: 16,
+          border: '1px solid #d1d5db', borderRadius: 8,
+          background: '#f9fafb', maxWidth: 400,
+        }}>
+          <h3 style={{ margin: '0 0 12px 0', fontSize: 15 }}>报告参数</h3>
+          <div style={{ marginBottom: 10 }}>
+            <label style={{ display: 'block', fontSize: 13, marginBottom: 4, color: '#374151' }}>
+              正常设备温度 (°C) *
+            </label>
+            <input
+              type="number" step="0.1"
+              value={normalTemp}
+              onChange={e => setNormalTemp(e.target.value)}
+              placeholder="例如: 25.0"
+              style={{
+                width: '100%', padding: '6px 10px',
+                border: '1px solid #d1d5db', borderRadius: 4,
+                fontSize: 14, boxSizing: 'border-box',
+              }}
+            />
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', fontSize: 13, marginBottom: 4, color: '#6b7280' }}>
+              环境温度覆盖 (°C) — 可选，留空则自动使用 FLIR 相机记录值
+            </label>
+            <input
+              type="number" step="0.1"
+              value={ambientOverride}
+              onChange={e => setAmbientOverride(e.target.value)}
+              placeholder="留空 = 自动"
+              style={{
+                width: '100%', padding: '6px 10px',
+                border: '1px solid #d1d5db', borderRadius: 4,
+                fontSize: 14, boxSizing: 'border-box',
+              }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={handleReport}
+              disabled={generating}
+              style={{
+                padding: '6px 16px', background: '#059669', color: '#fff',
+                border: 'none', borderRadius: 4, cursor: generating ? 'wait' : 'pointer',
+                fontSize: 14,
+              }}
+            >
+              {generating ? '生成中...' : '确认生成'}
+            </button>
+            <button
+              onClick={() => setShowReportForm(false)}
+              style={{
+                padding: '6px 16px', background: '#e5e7eb', color: '#374151',
+                border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 14,
+              }}
+            >
+              取消
+            </button>
+          </div>
+          <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 10, marginBottom: 0 }}>
+            相对温差 = (最高温 − 正常温度) / (最高温 − 环境温度) × 100%
+          </p>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
         {images.map(img => (

@@ -58,6 +58,7 @@ def process_single_image(file_path: str, filename: str, project_id: int, db: Ses
         thermal_height=result["thermal_height"],
         display_width=result["display_width"],
         display_height=result["display_height"],
+        atmospheric_temp=result.get("atmospheric_temp"),
     )
     db.add(img)
     db.commit()

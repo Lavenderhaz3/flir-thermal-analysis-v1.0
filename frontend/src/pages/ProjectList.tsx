@@ -40,6 +40,12 @@ export default function ProjectList() {
     load();
   };
 
+  const deleteProject = async (id: number, projectName: string) => {
+    if (!confirm(`确认删除项目「${projectName}」？\n此操作不可撤销，所有图片和标注将永久删除。`)) return;
+    await api.delete(`/projects/${id}`);
+    load();
+  };
+
   const modelLabel = (v: string) => MODEL_OPTIONS.find(m => m.value === v)?.label || v;
 
   return (
@@ -134,6 +140,7 @@ export default function ProjectList() {
             <th style={{ padding: 8 }}>识别模型</th>
             <th style={{ padding: 8 }}>图片数</th>
             <th style={{ padding: 8 }}>创建时间</th>
+            <th style={{ padding: 8, width: 50 }}></th>
           </tr>
         </thead>
         <tbody>
@@ -151,6 +158,20 @@ export default function ProjectList() {
               <td style={{ padding: 8 }}>{p.image_count ?? 0}</td>
               <td style={{ padding: 8, fontSize: 13, color: '#888' }}>
                 {new Date(p.created_at).toLocaleString()}
+              </td>
+              <td style={{ padding: 8, textAlign: 'center' }}>
+                <button
+                  onClick={() => deleteProject(p.id, p.name)}
+                  title="删除项目"
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: '#999', fontSize: 16, padding: '2px 6px',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.color = '#dc2626')}
+                  onMouseLeave={e => (e.currentTarget.style.color = '#999')}
+                >
+                  ✕
+                </button>
               </td>
             </tr>
           ))}

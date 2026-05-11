@@ -96,17 +96,31 @@ export default function AnnotationEditor() {
   // ── Mouse handlers ───────────────────────────────────────────────
 
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    // Start drawing if clicking on stage, image, or empty area (not on an annotation rect)
-    const targetName = e.target.name();
-    const isAnnotation = targetName && targetName.startsWith('ann-rect-');
-    if (!isAnnotation) {
-      setSelectedId(null);
-      const pos = e.target.getStage()!.getPointerPosition()!;
-      const ix = pos.x / fitScale;
-      const iy = pos.y / fitScale;
-      setDrawing(true);
-      setNewBox({ x1: ix, y1: iy, x2: ix, y2: iy });
-    }
+    // Skip if clicking on annotation rects or Transformer anchor handles.
+    // Transformer anchors have names like "top-left", "bottom-right", etc.
+    const target = e.target;
+    const name = target.name() || '';
+    const isAnnotation = name.startsWith('ann-rect-');
+    // Transformer anchors don't have "ann-rect-" in their name, but their
+    // parent is the Transformer.  Fallback: common anchor name patterns.
+    const isTransformerHandle =
+      name.startsWith('top-') ||
+      name.startsWith('bottom-') ||
+      name.startsWith('middle-left') ||
+      name.startsWith('middle-right');
+
+    if (isAnnotation || isTransformerHandle) return;
+
+    // Start drawing a new box on empty stage / background image
+    setSelectedId(null);
+    const pos = target.getStage()!.getPointerPosition()!;
+    setDrawing(true);
+    setNewBox({
+      x1: pos.x / fitScale,
+      y1: pos.y / fitScale,
+      x2: pos.x / fitScale,
+      y2: pos.y / fitScale,
+    });
   };
 
   const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -163,16 +177,18 @@ export default function AnnotationEditor() {
 
   const handleTransformEnd = async (annId: number, e: Konva.KonvaEventObject<Event>) => {
     const node = e.target;
-    const sx = node.scaleX();
-    const sy = node.scaleY();
+    // Apply accumulated scale to width/height BEFORE resetting scale to 1.
+    // This avoids Konva implicitly adjusting x/y on scale reset.
+    node.width(node.width() * node.scaleX());
+    node.height(node.height() * node.scaleY());
     node.scaleX(1);
     node.scaleY(1);
 
     const box: BoxCoords = {
       x1: node.x() / fitScale,
       y1: node.y() / fitScale,
-      x2: (node.x() + node.width() * sx) / fitScale,
-      y2: (node.y() + node.height() * sy) / fitScale,
+      x2: (node.x() + node.width()) / fitScale,
+      y2: (node.y() + node.height()) / fitScale,
     };
     try {
       const res = await api.put(`/annotations/${annId}`, {
@@ -251,7 +267,6 @@ export default function AnnotationEditor() {
             {annotations.map(ann => {
               const box = thermalToCanvas(ann.box_coords);
               const cx = box.x + box.width / 2;
-              const cy = box.y + box.height / 2;
               const isAuto = ann.source === "auto";
               const accentColor = isAuto ? "#3b82f6" : "#ff4444";
               return (

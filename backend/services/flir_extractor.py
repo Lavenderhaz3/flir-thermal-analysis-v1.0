@@ -9,6 +9,7 @@ import os
 import subprocess
 import tempfile
 import warnings
+from typing import Optional
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -221,6 +222,18 @@ def process_image(image_path: str, output_dir: str) -> dict:
         "thermal_height": int(exif_meta.get("RawThermalImageHeight", temp_c.shape[0])),
         "display_width": display_w,
         "display_height": display_h,
+        "atmospheric_temp": _safe_float(exif_meta.get("AtmosphericTemperature")),
         "camera_make": exif_meta.get("Make", "unknown"),
         "camera_model": exif_meta.get("Model", "unknown"),
     }
+
+
+
+def _safe_float(val) -> Optional[float]:
+    """Safely convert a value to float, returning None on failure."""
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None

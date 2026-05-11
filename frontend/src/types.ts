@@ -1,6 +1,7 @@
 export interface Project {
   id: number;
   name: string;
+  model_type?: string;  // "none" | "transformer" | "switchgear" | ...
   created_at: string;
   image_count?: number;
   images?: ImageSummary[];

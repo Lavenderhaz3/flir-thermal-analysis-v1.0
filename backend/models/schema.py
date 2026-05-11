@@ -37,6 +37,7 @@ class Image(Base):
     thermal_height = Column(Integer, nullable=True)
     display_width = Column(Integer, nullable=True)
     display_height = Column(Integer, nullable=True)
+    atmospheric_temp = Column(Float, nullable=True)   # 环境温度(°C), from FLIR EXIF
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     project = relationship("Project", back_populates="images")
