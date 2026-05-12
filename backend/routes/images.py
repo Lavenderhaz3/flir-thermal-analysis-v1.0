@@ -173,6 +173,14 @@ def get_image(image_id: int, db: Session = Depends(get_db)):
     img = db.query(Image).filter(Image.id == image_id).first()
     if not img:
         raise HTTPException(status_code=404, detail="Image not found")
+    # Compute stable preview URL from original_path (doesn't drift when date/equipment change)
+    from config import UPLOAD_DIR
+    try:
+        rel = os.path.relpath(img.original_path, UPLOAD_DIR)
+        preview_url = f"/uploads/{rel}"
+    except (ValueError, AttributeError):
+        preview_url = f"/uploads/{img.project_id}/{img.date or 'unknown'}/{img.equipment or 'unknown'}/{img.filename}"
+
     return {
         "id": img.id,
         "project_id": img.project_id,
@@ -188,7 +196,7 @@ def get_image(image_id: int, db: Session = Depends(get_db)):
         "thermal_height": img.thermal_height,
         "display_width": img.display_width,
         "display_height": img.display_height,
-        "preview_url": f"/uploads/{img.project_id}/{img.date or 'unknown'}/{img.equipment or 'unknown'}/{img.filename}",
+        "preview_url": preview_url,
         "annotations": [
             {
                 "id": a.id,

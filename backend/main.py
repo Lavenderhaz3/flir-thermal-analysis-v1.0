@@ -31,11 +31,15 @@ def health():
 def startup():
     Base.metadata.create_all(bind=engine)
     with engine.connect() as conn:
-        try:
-            conn.execute(text("ALTER TABLE images ADD COLUMN atmospheric_temp FLOAT"))
-            conn.commit()
-        except Exception:
-            pass
+        for col_sql in [
+            "ALTER TABLE images ADD COLUMN atmospheric_temp FLOAT",
+            "ALTER TABLE images ADD COLUMN equipment_id INTEGER",
+        ]:
+            try:
+                conn.execute(text(col_sql))
+                conn.commit()
+            except Exception:
+                pass
 
     # Auto-open browser in desktop mode (PyInstaller .app)
     if getattr(sys, 'frozen', False):

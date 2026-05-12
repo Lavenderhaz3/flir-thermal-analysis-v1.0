@@ -111,7 +111,7 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
                 "t_min": i.t_min,
                 "t_max": i.t_max,
                 "t_mean": i.t_mean,
-                "preview_url": f"/uploads/{proj.id}/{i.date or 'unknown'}/{i.equipment or 'unknown'}/{i.filename}",
+                "preview_url": _stable_preview_url(i.original_path, proj.id, i.date, i.equipment, i.filename),
             }
             for i in proj.images
         ],
@@ -170,3 +170,14 @@ def get_project_trend(project_id: int, db: Session = Depends(get_db)):
         "project_id": project_id,
         "equipment_trends": dict(by_equipment),
     }
+
+
+def _stable_preview_url(original_path, project_id, date, equipment, filename):
+    """Return a stable preview URL from original_path, falling back to dynamic construction."""
+    if original_path:
+        try:
+            rel = os.path.relpath(original_path, UPLOAD_DIR)
+            return f"/uploads/{rel}"
+        except ValueError:
+            pass
+    return f"/uploads/{project_id}/{date or 'unknown'}/{equipment or 'unknown'}/{filename}"

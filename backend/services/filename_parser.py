@@ -11,6 +11,7 @@ PATTERN = re.compile(
     r"^(?P<date>\d{4}-\d{2}-\d{2})"
     r"(?P<area>[A-Za-z\u4e00-\u9fff]+)"
     r"-(?P<equip_id>[A-Za-z0-9]+)"
+    r"(?:-\d+)?"
     r"(?P<type>[A-Za-z\u4e00-\u9fff]+)"
     r"\.(jpg|jpeg)$",
     re.IGNORECASE,
