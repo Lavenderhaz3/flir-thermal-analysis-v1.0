@@ -84,6 +84,45 @@ def find_equipment(
     ]
 
 
+PREDEFINED_AREAS = [
+    "500kV交流场",
+    "500kV交流滤波器场",
+    "直流场",
+    "换流变区域",
+    "二次屏柜",
+]
+
+
+@router.get("/areas")
+def list_areas(db: Session = Depends(get_db)):
+    """Return all available areas — predefined + extracted from images."""
+    img_areas = {
+        row[0] for row in
+        db.query(Image.area).filter(Image.area.isnot(None)).distinct().all()
+    }
+    all_areas = sorted(set(PREDEFINED_AREAS) | img_areas)
+    return all_areas
+
+
+@router.get("/list")
+def list_equipment(db: Session = Depends(get_db)):
+    """Return all unique equipment (area + name) with image counts for dropdowns."""
+    images = (
+        db.query(Image)
+        .filter(Image.equipment.isnot(None))
+        .all()
+    )
+    grouped = {}
+    for img in images:
+        key = (img.area or "未知", img.equipment)
+        if key not in grouped:
+            grouped[key] = {"area": key[0], "name": key[1], "count": 0}
+        grouped[key]["count"] += 1
+
+    result = sorted(grouped.values(), key=lambda x: (x["area"], x["name"]))
+    return result
+
+
 # ── Helpers ────────────────────────────────────────────────────────
 
 def _build_points(images: list[Image], db: Session) -> list[dict]:
