@@ -120,47 +120,53 @@ rm -rf "/Users/mba/claude code/detect/backend/uploads"
 "/Users/mba/claude code/detect/"
 ├── HERMES_HANDOFF.md            ◀── 本文件
 ├── start.sh                     一键启动脚本
-├── build_app.sh                 PyInstaller .app 构建
-├── DEVELOPMENT_PLAN.md          开发方案（部分内容已过时）
+├── build_app.sh                 macOS .app 构建脚本
+├── DEVELOPMENT_PLAN.md          开发方案（部分过时）
 ├── FLIR_TECHNICAL_NOTES.md      技术笔记（温度公式权威）
 ├── flir_verify_poc.py           PoC 验证脚本
+├── .gitignore
 │
 ├── backend/
 │   ├── main.py                  FastAPI 入口 + uvicorn + DB迁移
-│   ├── config.py                DATABASE_URL + UPLOAD_DIR (支持 PyInstaller)
-│   ├── app.db                   SQLite 数据库
-│   ├── uploads/                 {project_id}/{date}/{equipment}/*.jpg/npy/png
+│   ├── config.py                配置（DB路径/上传目录，支持 PyInstaller）
+│   ├── app.db                   SQLite 数据库（运行时，不提交 git）
+│   ├── uploads/                 上传文件 {project_id}/{date}/{equipment}/*.jpg/.npy/.png
 │   ├── templates/report.docx    Word 报告模板
 │   ├── models/
 │   │   ├── database.py          SQLAlchemy engine + session
 │   │   ├── schema.py            Project / Equipment / Image / Annotation
-│   │   └── weights/             模型权重目录（YOLO .pt 文件）
+│   │   └── weights/             YOLO .pt 模型文件
 │   ├── routes/
-│   │   ├── projects.py          项目 CRUD + 上限 20 自动清理
+│   │   ├── projects.py          项目 CRUD + 上限20自动清理
 │   │   ├── images.py            上传 + 批量处理 + 自动检测
 │   │   ├── annotations.py       画框 CRUD + 框内温度计算
-│   │   ├── equipment.py         设备趋势（跨项目 by name+area）
-│   │   └── reports.py           报告生成（相对温差 + 中文文件名）
+│   │   ├── equipment.py         设备趋势（跨项目 by name+area）+ 预定义区域
+│   │   └── reports.py           报告生成（相对温差 + RFC 5987中文文件名）
 │   └── services/
 │       ├── flir_extractor.py    FLIR 温度提取（exiftool + Planck）
-│       ├── filename_parser.py   文件名解析（支持可选序号 -XXX）
+│       ├── filename_parser.py   文件名解析（新@格式 + 旧格式兼容）
 │       ├── auto_detect.py       YOLO 检测 / 热点定位
-│       ├── report_generator.py  Word 报告（docxtpl + 相对温差计算）
+│       ├── report_generator.py  Word 报告（docxtpl + 相对温差公式）
 │       └── create_template.py   创建默认 Word 模板
 │
-└── frontend/
-    ├── package.json             React 19 + Konva 10 + Vite
-    └── src/
-        ├── App.tsx              路由
-        ├── main.tsx             入口
-        ├── types.ts             TypeScript 类型定义
-        ├── api/client.ts        axios 封装
-        ├── components/
-        │   └── TrendChart.tsx   SVG 趋势折线图
-        └── pages/
-            ├── ProjectList.tsx      项目列表 + 创建 + 删除
-            ├── ProjectDetail.tsx    图片列表 + 上传 + 报告参数面板
-            └── AnnotationEditor.tsx 画框编辑器（Konva + 趋势图）
+├── frontend/
+│   ├── package.json             React 19 + Konva 10 + Vite
+│   └── src/
+│       ├── App.tsx              路由
+│       ├── types.ts             TypeScript 类型定义
+│       ├── api/client.ts        axios 封装 (baseURL: /api, Vite proxy → :8000)
+│       ├── components/
+│       │   └── TrendChart.tsx   SVG 温度趋势折线图
+│       └── pages/
+│           ├── ProjectList.tsx      主页（左60%项目列表 + 右40%设备查询）
+│           ├── ProjectDetail.tsx    项目详情（缩略图 + 上传 + 报告参数面板）
+│           └── AnnotationEditor.tsx 标注编辑器（Konva画布 + 趋势图）
+│
+├── docs/
+│   └── MODEL_TRAINING_PLAN.md   Windows YOLO 训练管道方案
+│
+├── build/ + dist/               PyInstaller 构建产物（不提交 git）
+└── .hermes/plans/               开发计划存档
 ```
 
 ---
