@@ -42,19 +42,35 @@ def process_single_image(file_path: str, filename: str, project_id: int, db: Ses
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=f"FLIR processing failed: {e}")
 
-    # ── Auto-create / link Equipment (global match across projects) ─
+    # ── Per-equipment cap: keep at most 20 images ─────────────────
+    if parsed and parsed.get("equip_id"):
+        existing = (
+            db.query(Image)
+            .filter(Image.equipment == parsed["equip_id"])
+            .order_by(Image.created_at.asc())
+            .all()
+        )
+        while len(existing) >= 20:
+            oldest = existing.pop(0)
+            # Delete files
+            if oldest.original_path and os.path.exists(oldest.original_path):
+                os.remove(oldest.original_path)
+            if oldest.thermal_npy_path and os.path.exists(oldest.thermal_npy_path):
+                os.remove(oldest.thermal_npy_path)
+            if oldest.preview_path and os.path.exists(oldest.preview_path):
+                os.remove(oldest.preview_path)
+            db.delete(oldest)
+        db.commit()
+
+    # ── Auto-create / link Equipment ──────────────────────────
     equip_id = None
     proj = db.query(Project).filter(Project.id == project_id).first()
     if parsed and parsed.get("equip_id"):
         equip_name = parsed["equip_id"]
         equip_area = parsed.get("area")
-        # Find existing equipment by name + area GLOBALLY
         equip = (
             db.query(Equipment)
-            .filter(
-                Equipment.name == equip_name,
-                Equipment.area == equip_area,
-            )
+            .filter(Equipment.name == equip_name, Equipment.area == equip_area)
             .first()
         )
         if not equip:

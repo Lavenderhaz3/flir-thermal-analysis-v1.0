@@ -222,9 +222,14 @@ export default function AnnotationEditor() {
   return (
     <div style={{ padding: 10 }}>
       <p>
-        <a href={`/project/${projectId}`} style={{ color: '#2563eb' }}>← 返回项目</a>
-        {' · '}{image.filename}
-        {' · '}最高温: {image.t_max?.toFixed(1)}°C
+        <a href="/" style={{ color: '#2563eb' }}>← 返回主页</a>
+        {' · '}
+        <a href={`/project/${projectId}`} style={{ color: '#2563eb' }}>进入项目</a>
+      </p>
+      <h2 style={{ margin: '0 0 2px 0' }}>设备历史测温库</h2>
+      <p style={{ margin: '0 0 10px 0', fontSize: 15, color: '#374151', fontWeight: 600 }}>{image.filename}</p>
+      <p style={{ margin: '0 0 10px 0', fontSize: 13, color: '#666' }}>
+        最高温: {image.t_max?.toFixed(1)}°C
         {' · '}最低温: {image.t_min?.toFixed(1)}°C
         {' · '}平均温: {image.t_mean?.toFixed(1)}°C
         {tW !== dW && (

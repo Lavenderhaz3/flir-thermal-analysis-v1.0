@@ -158,9 +158,9 @@ rm -rf "/Users/mba/claude code/detect/backend/uploads"
 │       ├── components/
 │       │   └── TrendChart.tsx   SVG 温度趋势折线图
 │       └── pages/
-│           ├── ProjectList.tsx      主页（左60%项目列表 + 右40%设备查询）
-│           ├── ProjectDetail.tsx    项目详情（缩略图 + 上传 + 报告参数面板）
-│           └── AnnotationEditor.tsx 标注编辑器（Konva画布 + 趋势图）
+│           ├── ProjectList.tsx      主页（搜索+项目列表+设备查询+跟踪）  ← 界面标题: FLIR图谱分析
+│           ├── ProjectDetail.tsx    项目内容（缩略图+上传+报告）         ← 界面标题: 项目内容
+│           └── AnnotationEditor.tsx 设备历史测温库（Konva画布+趋势图）  ← 界面标题: 设备历史测温库
 │
 ├── docs/
 │   └── MODEL_TRAINING_PLAN.md   Windows YOLO 训练管道方案

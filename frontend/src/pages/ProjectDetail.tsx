@@ -80,8 +80,9 @@ export default function ProjectDetail() {
 
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto', padding: 20 }}>
-      <p><a href="/" style={{ color: '#2563eb' }}>← 返回项目列表</a></p>
-      <h1>{project.name}</h1>
+      <p><a href="/" style={{ color: '#2563eb' }}>← 返回主页</a></p>
+      <h1>项目内容</h1>
+      <p style={{ fontSize: 15, color: '#374151', fontWeight: 600, marginTop: -8 }}>{project.name}</p>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
         <label style={{

@@ -23,6 +23,7 @@ export default function ProjectList() {
   const [name, setName] = useState('');
   const [modelType, setModelType] = useState('none');
   const [template, setTemplate] = useState<File | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // ── Equipment history search ──────────────────────────
   const [areaList, setAreaList] = useState<string[]>([]);
@@ -31,6 +32,22 @@ export default function ProjectList() {
   const [searchName, setSearchName] = useState('');
   const [trendData, setTrendData] = useState<EquipmentTrend | null>(null);
   const [searching, setSearching] = useState(false);
+  const [tracked, setTracked] = useState<EquipItem[]>(() => {
+    try { return JSON.parse(localStorage.getItem('tracked') || '[]'); } catch { return []; }
+  });
+
+  const toggleTrack = (area: string, name: string) => {
+    setTracked(prev => {
+      const exists = prev.find(t => t.area === area && t.name === name);
+      const next = exists ? prev.filter(t => !(t.area === area && t.name === name))
+                          : [...prev, { area, name, count: 0 }];
+      localStorage.setItem('tracked', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const isTracked = (area: string, name: string) =>
+    tracked.some(t => t.area === area && t.name === name);
 
   const load = async () => {
     const res = await api.get('/projects/');
@@ -96,10 +113,14 @@ export default function ProjectList() {
 
   const modelLabel = (v: string) => MODEL_OPTIONS.find(m => m.value === v)?.label || v;
 
+  const filteredProjects = projects
+    .filter(p => !searchQuery || p.name.includes(searchQuery))
+    .slice(0, 20);
+
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1>FLIR 红外测温分析系统</h1>
+        <h1>FLIR图谱分析</h1>
       </div>
 
       {/* ── Main Layout: 60% projects | 40% search ──────────── */}
@@ -107,12 +128,20 @@ export default function ProjectList() {
 
         {/* Left: Project table */}
         <div style={{ flex: '0 0 60%', minWidth: 0 }}>
-          <button
-            onClick={() => setShowCreate(true)}
-            style={{ padding: '8px 18px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14, marginBottom: 12 }}
-          >
-            + 创建项目
-          </button>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+            <button
+              onClick={() => setShowCreate(true)}
+              style={{ padding: '8px 18px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14 }}
+            >
+              + 创建项目
+            </button>
+            <input
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="搜索项目名称..."
+              style={{ flex: 1, padding: '6px 12px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 14 }}
+            />
+          </div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ textAlign: 'left', borderBottom: '2px solid #ddd' }}>
@@ -125,7 +154,7 @@ export default function ProjectList() {
               </tr>
             </thead>
             <tbody>
-              {projects.map(p => (
+              {filteredProjects.map(p => (
                 <tr key={p.id} style={{ borderBottom: '1px solid #eee' }}>
                   <td style={{ padding: 8 }}>{p.id}</td>
                   <td style={{ padding: 8 }}>
@@ -203,6 +232,16 @@ export default function ProjectList() {
                 <div style={{ flex: '1 1 300px', maxHeight: 340, overflowY: 'auto' }}>
                   <h4 style={{ margin: '0 0 8px 0', fontSize: 14 }}>
                     {trendData.equipment_name} @ {trendData.area} · {trendData.points.length} 次记录
+                    <button
+                      onClick={() => toggleTrack(trendData.area, trendData.equipment_name)}
+                      style={{
+                        marginLeft: 10, padding: '2px 10px', fontSize: 12,
+                        background: isTracked(trendData.area, trendData.equipment_name) ? '#dc2626' : '#059669',
+                        color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer',
+                      }}
+                    >
+                      {isTracked(trendData.area, trendData.equipment_name) ? '取消跟踪' : '+ 添加到跟踪'}
+                    </button>
                   </h4>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
                     {trendData.points.map(p => (
@@ -227,6 +266,29 @@ export default function ProjectList() {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+          {/* ── Tracked Equipment ──────────────────────────── */}
+          {tracked.length > 0 && (
+            <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #e5e7eb' }}>
+              <h4 style={{ margin: '0 0 8px 0', fontSize: 14 }}>📌 跟踪设备</h4>
+              {tracked.map(t => (
+                <div
+                  key={`${t.area}-${t.name}`}
+                  onClick={() => { setSearchArea(t.area); setSearchName(t.name); handleSearch(); }}
+                  style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '6px 10px', marginBottom: 4, borderRadius: 4,
+                    background: '#f0f9ff', cursor: 'pointer', fontSize: 13,
+                  }}
+                >
+                  <span>{t.name} <span style={{ color: '#888' }}>@{t.area}</span></span>
+                  <button
+                    onClick={e => { e.stopPropagation(); toggleTrack(t.area, t.name); }}
+                    style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: 14 }}
+                  >✕</button>
+                </div>
+              ))}
             </div>
           )}
         </div>
