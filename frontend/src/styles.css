@@ -462,17 +462,18 @@ button:not(:disabled):active {
 
 .project-overview {
   display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr)) auto;
+  grid-template-columns: repeat(4, minmax(100px, 180px)) auto;
   gap: 12px;
   align-items: stretch;
+  justify-content: start;
   margin-bottom: 20px;
 }
 
 .stat-tile {
   display: grid;
-  gap: 5px;
-  min-height: 78px;
-  padding: 14px;
+  gap: 2px;
+  min-height: 40px;
+  padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
@@ -497,11 +498,11 @@ button:not(:disabled):active {
 
 .project-actions {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 8px;
-  min-width: 178px;
-  padding: 12px;
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;

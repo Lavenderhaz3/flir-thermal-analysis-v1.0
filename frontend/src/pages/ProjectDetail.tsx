@@ -45,6 +45,18 @@ export default function ProjectDetail() {
     load();
   };
 
+  const handleDeleteImage = async (e: React.MouseEvent, imageId: number, imageName: string) => {
+    e.stopPropagation();
+    if (!window.confirm(`确认删除 "${imageName}" 及其标注数据？此操作不可撤销。`)) return;
+    try {
+      await api.delete(`/images/${imageId}`);
+      load();
+    } catch (err) {
+      console.error('Delete failed', err);
+      alert('删除失败');
+    }
+  };
+
   const handleReport = async () => {
     const normal = parseFloat(normalTemp);
     if (isNaN(normal)) {
@@ -185,7 +197,6 @@ export default function ProjectDetail() {
 
       <div className="section-bar">
         <h2 className="panel__title">设备图谱</h2>
-        <span className="subtle">点击图片进入测温标注</span>
       </div>
 
       <div className="image-grid image-grid--inspection">
@@ -198,7 +209,16 @@ export default function ProjectDetail() {
               <span className="image-card__date">{img.date || '未知日期'}</span>
             </div>
             <div className="image-card__body">
-              <div className="image-card__title">{img.equipment || img.filename}</div>
+              <div className="image-card__title">
+                {img.equipment || img.filename}
+                <button
+                  className="btn btn-danger-ghost"
+                  style={{ float: 'right', padding: '2px 6px', fontSize: 12, minHeight: 'auto' }}
+                  onClick={e => handleDeleteImage(e, img.id, img.filename)}
+                >
+                  删除
+                </button>
+              </div>
               <div className="image-card__meta">
                 <span>{img.area || '未知区域'}</span>
                 <span>{img.filename}</span>

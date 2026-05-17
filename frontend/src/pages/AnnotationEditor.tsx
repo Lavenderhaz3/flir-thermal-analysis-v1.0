@@ -237,8 +237,32 @@ export default function AnnotationEditor() {
         {' · '}
         <a href={`/project/${projectId}`}>进入项目</a>
       </p>
-          <h1 className="page-title">设备历史测温库</h1>
-          <p className="subtle" style={{ margin: '8px 0 0', fontWeight: 650 }}>{image.filename}</p>
+          <h1 className="page-title">{image?.equipment || '未知设备'} 图谱</h1>
+          <p className="subtle" style={{ margin: '8px 0 0', fontWeight: 650 }}>
+            {image?.filename}
+            <button
+              className="btn btn-danger-ghost"
+              style={{ marginLeft: 10, padding: '2px 8px', fontSize: 12, minHeight: 'auto' }}
+              onClick={async () => {
+                if (!window.confirm(`确认删除 "${image?.filename}" 及其标注数据？此操作不可撤销。`)) return;
+                try {
+                  await api.delete(`/images/${imageId}`);
+                  const peers = (trendData?.points || [])
+                    .filter(p => p.image_id !== Number(imageId) && p.project_id === Number(projectId))
+                    .sort((a, b) => b.date.localeCompare(a.date));
+                  if (peers.length > 0) {
+                    navigate(`/project/${projectId}/image/${peers[0].image_id}`);
+                  } else {
+                    navigate(`/project/${projectId}`);
+                  }
+                } catch {
+                  alert('删除失败');
+                }
+              }}
+            >
+              删除
+            </button>
+          </p>
         </div>
         <div className="editor-summary">
           <div className="summary-tile summary-tile--hot"><span>最高</span><strong>{image.t_max?.toFixed(1)}°C</strong></div>
@@ -249,17 +273,6 @@ export default function AnnotationEditor() {
 
       <div className="editor-grid">
         <main className="editor-main">
-        <div className="canvas-toolbar">
-          <div>
-            <strong>图谱标注</strong>
-            <span className="subtle">拖拽空白区域新建框，拖动框体调整位置</span>
-          </div>
-          <div className="legend-row">
-            {tW !== dW && <span>{tW}×{tH} → {dW}×{dH}</span>}
-            <span><i className="legend-dot legend-dot--manual" />手动</span>
-            <span><i className="legend-dot legend-dot--auto" />自动</span>
-          </div>
-        </div>
         <div className="canvas-frame">
           <Stage
             width={canvasW}

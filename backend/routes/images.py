@@ -276,3 +276,25 @@ def get_thermal_matrix(image_id: int, db: Session = Depends(get_db)):
     if arr.size > 1_000_000:
         return {"error": "Matrix too large, use cropped queries"}
     return {"data": arr.tolist(), "shape": list(arr.shape)}
+
+
+@router.delete("/images/{image_id}")
+def delete_image(image_id: int, db: Session = Depends(get_db)):
+    img = db.query(Image).filter(Image.id == image_id).first()
+    if not img:
+        raise HTTPException(status_code=404, detail="Image not found")
+    # Delete files on disk
+    for path in [img.original_path, img.thermal_npy_path, img.preview_path]:
+        if path and os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    if img.thermal_npy_path:
+        artifact_root = os.path.dirname(img.thermal_npy_path)
+        if os.path.isdir(artifact_root):
+            shutil.rmtree(artifact_root, ignore_errors=True)
+    # Delete from DB (annotations cascade)
+    db.delete(img)
+    db.commit()
+    return {"ok": True}
