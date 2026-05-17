@@ -77,45 +77,68 @@ export default function ProjectDetail() {
   if (!project) return <div style={{ padding: 20 }}>Loading...</div>;
 
   const images: ImageSummary[] = project.images ?? [];
+  const hotImages = images.filter(img => img.t_max != null).sort((a, b) => (b.t_max ?? -Infinity) - (a.t_max ?? -Infinity));
+  const hottest = hotImages[0];
+  const equipmentCount = new Set(images.map(img => `${img.area || 'unknown'}-${img.equipment || img.filename}`)).size;
+  const dateCount = new Set(images.map(img => img.date).filter(Boolean)).size;
 
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto', padding: 20 }}>
-      <p><a href="/" style={{ color: '#2563eb' }}>← 返回主页</a></p>
-      <h1>项目内容</h1>
-      <p style={{ fontSize: 15, color: '#374151', fontWeight: 600, marginTop: -8 }}>{project.name}</p>
-
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-        <label style={{
-          padding: '8px 16px', background: '#2563eb', color: '#fff',
-          borderRadius: 4, cursor: 'pointer',
-        }}>
-          {uploading ? '上传中...' : '上传图片 (JPG/ZIP)'}
-          <input type="file" accept=".jpg,.jpeg,.zip" multiple
-            ref={fileInputRef}
-            onChange={handleUpload} style={{ display: 'none' }}
-            disabled={uploading}
-          />
-        </label>
-        {images.length > 0 && (
-          <button
-            onClick={() => setShowReportForm(!showReportForm)}
-            style={{ padding: '8px 16px', background: '#059669', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
-          >
-            生成报告 (.docx)
-          </button>
-        )}
+    <div className="app-shell">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow"><a href="/">← 返回主页</a></p>
+          <h1 className="page-title">项目内容</h1>
+          <p className="subtle" style={{ margin: '8px 0 0', fontWeight: 650 }}>{project.name}</p>
+        </div>
+        <span className="status-pill">{images.length} 张图谱</span>
       </div>
+
+      <section className="project-overview">
+        <div className="stat-tile">
+          <span>图谱数量</span>
+          <strong>{images.length}</strong>
+        </div>
+        <div className="stat-tile">
+          <span>覆盖设备</span>
+          <strong>{images.length > 0 ? equipmentCount : 0}</strong>
+        </div>
+        <div className="stat-tile">
+          <span>巡检日期</span>
+          <strong>{dateCount}</strong>
+        </div>
+        <div className="stat-tile stat-tile--hot">
+          <span>最高温</span>
+          <strong>{hottest?.t_max != null ? `${hottest.t_max.toFixed(1)}°C` : '--'}</strong>
+        </div>
+        <div className="project-actions">
+          <label className="btn btn-primary">
+            {uploading ? '上传中...' : '上传图片 (JPG/ZIP)'}
+            <input type="file" accept=".jpg,.jpeg,.zip" multiple
+              ref={fileInputRef}
+              onChange={handleUpload} style={{ display: 'none' }}
+              disabled={uploading}
+            />
+          </label>
+          {images.length > 0 && (
+            <button
+              onClick={() => setShowReportForm(!showReportForm)}
+              className="btn btn-success"
+            >
+              生成报告 (.docx)
+            </button>
+          )}
+        </div>
+      </section>
 
       {/* Report parameter form */}
       {showReportForm && (
-        <div style={{
-          marginBottom: 20, padding: 16,
-          border: '1px solid #d1d5db', borderRadius: 8,
-          background: '#f9fafb', maxWidth: 400,
-        }}>
-          <h3 style={{ margin: '0 0 12px 0', fontSize: 15 }}>报告参数</h3>
+        <div className="panel report-form">
+          <div className="panel__head">
+            <h3 className="panel__title">报告参数</h3>
+          </div>
+          <div className="panel__body">
           <div style={{ marginBottom: 10 }}>
-            <label style={{ display: 'block', fontSize: 13, marginBottom: 4, color: '#374151' }}>
+            <label className="label">
               正常设备温度 (°C) *
             </label>
             <input
@@ -123,15 +146,11 @@ export default function ProjectDetail() {
               value={normalTemp}
               onChange={e => setNormalTemp(e.target.value)}
               placeholder="例如: 25.0"
-              style={{
-                width: '100%', padding: '6px 10px',
-                border: '1px solid #d1d5db', borderRadius: 4,
-                fontSize: 14, boxSizing: 'border-box',
-              }}
+              className="field"
             />
           </div>
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: 'block', fontSize: 13, marginBottom: 4, color: '#6b7280' }}>
+            <label className="label">
               环境温度覆盖 (°C) — 可选，留空则自动使用 FLIR 相机记录值
             </label>
             <input
@@ -139,62 +158,63 @@ export default function ProjectDetail() {
               value={ambientOverride}
               onChange={e => setAmbientOverride(e.target.value)}
               placeholder="留空 = 自动"
-              style={{
-                width: '100%', padding: '6px 10px',
-                border: '1px solid #d1d5db', borderRadius: 4,
-                fontSize: 14, boxSizing: 'border-box',
-              }}
+              className="field"
             />
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div className="toolbar">
             <button
               onClick={handleReport}
               disabled={generating}
-              style={{
-                padding: '6px 16px', background: '#059669', color: '#fff',
-                border: 'none', borderRadius: 4, cursor: generating ? 'wait' : 'pointer',
-                fontSize: 14,
-              }}
+              className="btn btn-success"
             >
               {generating ? '生成中...' : '确认生成'}
             </button>
             <button
               onClick={() => setShowReportForm(false)}
-              style={{
-                padding: '6px 16px', background: '#e5e7eb', color: '#374151',
-                border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 14,
-              }}
+              className="btn btn-secondary"
             >
               取消
             </button>
           </div>
-          <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 10, marginBottom: 0 }}>
+          <p className="formula-note">
             相对温差 = (最高温 − 正常温度) / (最高温 − 环境温度) × 100%
           </p>
+          </div>
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+      <div className="section-bar">
+        <h2 className="panel__title">设备图谱</h2>
+        <span className="subtle">点击图片进入测温标注</span>
+      </div>
+
+      <div className="image-grid image-grid--inspection">
         {images.map(img => (
           <div key={img.id}
             onClick={() => navigate(`/project/${id}/image/${img.id}`)}
-            style={{ border: '1px solid #ddd', borderRadius: 8, overflow: 'hidden', cursor: 'pointer' }}>
-            <img src={img.preview_url} alt={img.filename}
-              style={{ width: '100%', height: 200, objectFit: 'cover' }} />
-            <div style={{ padding: 10 }}>
-              <div style={{ fontWeight: 'bold', marginBottom: 4 }}>{img.filename}</div>
-              <div style={{ fontSize: 13, color: '#666' }}>
-                {img.area && `${img.area} · `}{img.equipment && `${img.equipment} · `}{img.date}
+            className="image-card">
+            <div className="image-card__media">
+              <img src={img.preview_url} alt={img.filename} />
+              <span className="image-card__date">{img.date || '未知日期'}</span>
+            </div>
+            <div className="image-card__body">
+              <div className="image-card__title">{img.equipment || img.filename}</div>
+              <div className="image-card__meta">
+                <span>{img.area || '未知区域'}</span>
+                <span>{img.filename}</span>
               </div>
-              <div style={{ marginTop: 6, display: 'flex', gap: 12, fontSize: 13 }}>
-                <span style={{ color: '#dc2626' }}>最高: {img.t_max?.toFixed(1)}°C</span>
-                <span style={{ color: '#2563eb' }}>最低: {img.t_min?.toFixed(1)}°C</span>
+              <div className="metric-row">
+                <span className="metric-hot">最高: {img.t_max?.toFixed(1)}°C</span>
+                <span className="metric-cool">最低: {img.t_min?.toFixed(1)}°C</span>
                 <span>平均: {img.t_mean?.toFixed(1)}°C</span>
               </div>
             </div>
           </div>
         ))}
       </div>
+      {images.length === 0 && (
+        <div className="empty-state">暂无图片，上传 JPG 或 ZIP 后开始分析</div>
+      )}
     </div>
   );
 }

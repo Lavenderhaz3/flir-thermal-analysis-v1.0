@@ -1,6 +1,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from models.database import get_db
@@ -107,19 +108,17 @@ def list_areas(db: Session = Depends(get_db)):
 @router.get("/list")
 def list_equipment(db: Session = Depends(get_db)):
     """Return all unique equipment (area + name) with image counts for dropdowns."""
-    images = (
-        db.query(Image)
+    rows = (
+        db.query(Image.area, Image.equipment, func.count(Image.id))
         .filter(Image.equipment.isnot(None))
+        .group_by(Image.area, Image.equipment)
         .all()
     )
-    grouped = {}
-    for img in images:
-        key = (img.area or "未知", img.equipment)
-        if key not in grouped:
-            grouped[key] = {"area": key[0], "name": key[1], "count": 0}
-        grouped[key]["count"] += 1
-
-    result = sorted(grouped.values(), key=lambda x: (x["area"], x["name"]))
+    result = [
+        {"area": area or "未知", "name": equipment, "count": count}
+        for area, equipment, count in rows
+    ]
+    result.sort(key=lambda x: (x["area"], x["name"]))
     return result
 
 
@@ -127,8 +126,13 @@ def list_equipment(db: Session = Depends(get_db)):
 
 def _build_points(images: list[Image], db: Session) -> list[dict]:
     points = []
+    project_ids = {img.project_id for img in images}
+    projects = {
+        project.id: project
+        for project in db.query(Project).filter(Project.id.in_(project_ids)).all()
+    } if project_ids else {}
     for img in images:
-        project = db.query(Project).filter(Project.id == img.project_id).first()
+        project = projects.get(img.project_id)
         points.append({
             "date": img.date,
             "t_max": round(img.t_max, 2) if img.t_max else None,

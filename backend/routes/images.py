@@ -1,7 +1,6 @@
 import os
 import shutil
 import zipfile
-import tempfile
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
@@ -12,6 +11,15 @@ from models.schema import Project, Image, Annotation, Equipment
 from services.flir_extractor import process_image
 from services.filename_parser import parse_filename
 from services.auto_detect import run_detection
+from services.file_utils import (
+    MAX_ZIP_MEMBERS,
+    MAX_ZIP_UNCOMPRESSED_BYTES,
+    copy_stream_to_temp,
+    ensure_under_directory,
+    sanitize_filename,
+    save_upload_to_temp,
+    unique_path,
+)
 import numpy as np
 
 router = APIRouter(prefix="/api", tags=["images"])
@@ -22,6 +30,8 @@ def process_single_image(file_path: str, filename: str, project_id: int, db: Ses
 
     Files are organized as: uploads/{project_id}/{date}/{equipment}/{filename}
     """
+    filename = sanitize_filename(filename, "image.jpg")
+
     # Parse filename for date/equipment
     parsed = parse_filename(filename)
     date_str = parsed["date"] if parsed else "unknown"
@@ -33,12 +43,16 @@ def process_single_image(file_path: str, filename: str, project_id: int, db: Ses
     os.makedirs(org_dir, exist_ok=True)
 
     # Save original file
-    dest_path = os.path.join(org_dir, filename)
+    dest_path = unique_path(org_dir, filename)
+    ensure_under_directory(dest_path, UPLOAD_DIR)
     shutil.copy(file_path, dest_path)
 
     # FLIR extraction → same organized directory
     try:
-        result = process_image(dest_path, org_dir)
+        artifact_name = os.path.splitext(os.path.basename(dest_path))[0] + "_artifacts"
+        artifact_dir = os.path.join(org_dir, artifact_name)
+        ensure_under_directory(artifact_dir, UPLOAD_DIR)
+        result = process_image(dest_path, artifact_dir)
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=f"FLIR processing failed: {e}")
 
@@ -46,19 +60,23 @@ def process_single_image(file_path: str, filename: str, project_id: int, db: Ses
     if parsed and parsed.get("equip_id"):
         existing = (
             db.query(Image)
-            .filter(Image.equipment == parsed["equip_id"])
+            .filter(Image.equipment == parsed["equip_id"], Image.area == parsed.get("area"))
             .order_by(Image.created_at.asc())
             .all()
         )
         while len(existing) >= 20:
             oldest = existing.pop(0)
             # Delete files
-            if oldest.original_path and os.path.exists(oldest.original_path):
-                os.remove(oldest.original_path)
-            if oldest.thermal_npy_path and os.path.exists(oldest.thermal_npy_path):
-                os.remove(oldest.thermal_npy_path)
-            if oldest.preview_path and os.path.exists(oldest.preview_path):
-                os.remove(oldest.preview_path)
+            for path in [oldest.original_path, oldest.thermal_npy_path, oldest.preview_path]:
+                if path and os.path.exists(path):
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+            if oldest.thermal_npy_path:
+                artifact_root = os.path.dirname(oldest.thermal_npy_path)
+                if os.path.isdir(artifact_root):
+                    shutil.rmtree(artifact_root, ignore_errors=True)
             db.delete(oldest)
         db.commit()
 
@@ -154,34 +172,49 @@ async def upload_images(
         raise HTTPException(status_code=404, detail="Project not found")
 
     results = []
+    errors = []
+    tmp_path = await save_upload_to_temp(file)
 
-    # Save uploaded file to temp location
-    with tempfile.NamedTemporaryFile(delete=False) as tmp:
-        content = await file.read()
-        tmp.write(content)
-        tmp_path = tmp.name
+    try:
+        original_name = sanitize_filename(file.filename, "upload")
+        ext = os.path.splitext(original_name)[1].lower()
+        if ext == ".zip":
+            try:
+                with zipfile.ZipFile(tmp_path) as zf:
+                    members = [info for info in zf.infolist() if not info.is_dir()]
+                    if len(members) > MAX_ZIP_MEMBERS:
+                        raise HTTPException(status_code=413, detail="ZIP contains too many files")
+                    total_size = sum(info.file_size for info in members)
+                    if total_size > MAX_ZIP_UNCOMPRESSED_BYTES:
+                        raise HTTPException(status_code=413, detail="ZIP uncompressed size too large")
 
-    ext = os.path.splitext(file.filename)[1].lower()
-    if ext == ".zip":
-        # Extract zip and process each jpg
-        with zipfile.ZipFile(tmp_path) as zf:
-            for name in sorted(zf.namelist()):
-                if not name.lower().endswith((".jpg", ".jpeg")):
-                    continue
-                inner_path = os.path.join(os.path.dirname(tmp_path), os.path.basename(name))
-                zf.extract(name, os.path.dirname(tmp_path))
-                actual_path = os.path.join(os.path.dirname(tmp_path), name)
-                try:
-                    img = process_single_image(actual_path, os.path.basename(name), project_id, db)
-                    results.append({"id": img.id, "filename": img.filename, "t_max": img.t_max})
-                except HTTPException:
-                    pass  # Skip failed images
-    else:
-        img = process_single_image(tmp_path, file.filename, project_id, db)
-        results.append({"id": img.id, "filename": img.filename, "t_max": img.t_max})
+                    for info in sorted(members, key=lambda item: item.filename):
+                        safe_name = sanitize_filename(info.filename, "image.jpg")
+                        if not safe_name.lower().endswith((".jpg", ".jpeg")):
+                            continue
+                        member_tmp = None
+                        try:
+                            with zf.open(info, "r") as src:
+                                member_tmp = copy_stream_to_temp(src, suffix=os.path.splitext(safe_name)[1])
+                            img = process_single_image(member_tmp, safe_name, project_id, db)
+                            results.append({"id": img.id, "filename": img.filename, "t_max": img.t_max})
+                        except HTTPException as exc:
+                            errors.append({"filename": safe_name, "detail": exc.detail})
+                        finally:
+                            if member_tmp and os.path.exists(member_tmp):
+                                os.unlink(member_tmp)
+            except zipfile.BadZipFile:
+                raise HTTPException(status_code=400, detail="Invalid ZIP file")
+        else:
+            if ext not in [".jpg", ".jpeg"]:
+                raise HTTPException(status_code=400, detail="Only JPG/JPEG or ZIP files are supported")
+            img = process_single_image(tmp_path, original_name, project_id, db)
+            results.append({"id": img.id, "filename": img.filename, "t_max": img.t_max})
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
-    os.unlink(tmp_path)
-    return {"uploaded": len(results), "images": results}
+    return {"uploaded": len(results), "images": results, "errors": errors}
 
 
 @router.get("/images/{image_id}")
@@ -192,9 +225,10 @@ def get_image(image_id: int, db: Session = Depends(get_db)):
     # Compute stable preview URL from original_path (doesn't drift when date/equipment change)
     from config import UPLOAD_DIR
     try:
-        rel = os.path.relpath(img.original_path, UPLOAD_DIR)
+        safe_path = ensure_under_directory(img.original_path, UPLOAD_DIR)
+        rel = os.path.relpath(safe_path, UPLOAD_DIR)
         preview_url = f"/uploads/{rel}"
-    except (ValueError, AttributeError):
+    except (ValueError, AttributeError, HTTPException):
         preview_url = f"/uploads/{img.project_id}/{img.date or 'unknown'}/{img.equipment or 'unknown'}/{img.filename}"
 
     return {
@@ -220,7 +254,10 @@ def get_image(image_id: int, db: Session = Depends(get_db)):
                 "t_max": a.t_max,
                 "t_min": a.t_min,
                 "t_mean": a.t_mean,
+                "max_position": {"x": a.max_x, "y": a.max_y} if a.max_x is not None else None,
+                "source": a.source,
                 "status": a.status,
+                "version": a.version,
             }
             for a in img.annotations
         ],

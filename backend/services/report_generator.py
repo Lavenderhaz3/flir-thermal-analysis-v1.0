@@ -10,7 +10,7 @@ from models.schema import Project
 
 
 def _compute_relative_delta(
-    t_max: float,
+    t_max: Optional[float],
     normal_temp: float,
     ambient_temp: Optional[float],
 ) -> Optional[float]:
@@ -19,7 +19,7 @@ def _compute_relative_delta(
 
     Returns None if ambient_temp is missing or denominator would be zero.
     """
-    if ambient_temp is None:
+    if t_max is None or ambient_temp is None:
         return None
     denom = t_max - ambient_temp
     if abs(denom) < 1e-6:

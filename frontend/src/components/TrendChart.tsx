@@ -57,16 +57,16 @@ export default function TrendChart({ trend, currentImageId }: TrendChartProps) {
     .join(' ');
 
   return (
-    <div style={{ marginBottom: 8 }}>
-      <h3 style={{ fontSize: 14, margin: '0 0 8px 0', color: '#374151' }}>
+    <div className="trend-card">
+      <h3 className="panel__title" style={{ fontSize: 14, marginBottom: 10 }}>
         温度趋势 · {trend.equipment_name}
-        {trend.area && <span style={{ color: '#9ca3af' }}> @ {trend.area}</span>}
+        {trend.area && <span className="subtle"> @ {trend.area}</span>}
       </h3>
       <div style={{ position: 'relative' }}>
         <svg
           ref={svgRef}
           viewBox={`0 0 ${width} ${height}`}
-          style={{ width: '100%', background: '#fafafa', borderRadius: 6, border: '1px solid #e5e7eb' }}
+          style={{ width: '100%', background: '#f8fafc', borderRadius: 8, border: '1px solid #dde3ea' }}
         >
           {/* Grid */}
           {Array.from({ length: 5 }, (_, i) => {

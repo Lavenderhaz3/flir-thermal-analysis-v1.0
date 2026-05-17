@@ -33,6 +33,8 @@ def calc_box_temps(temp_matrix: np.ndarray, coords: BoxCoords) -> dict:
     roi = temp_matrix[y1:y2, x1:x2]
     if roi.size == 0:
         raise HTTPException(status_code=400, detail="Box has zero area on temperature matrix")
+    if np.all(np.isnan(roi)):
+        raise HTTPException(status_code=400, detail="Box contains no valid temperature pixels")
 
     # Find max position within ROI (local coords)
     max_flat = np.nanargmax(roi)
@@ -106,6 +108,8 @@ def update_annotation(annotation_id: int, body: AnnotationCreate, db: Session = 
     ann.t_max = temps["t_max"]
     ann.t_min = temps["t_min"]
     ann.t_mean = temps["t_mean"]
+    ann.max_x = temps["max_x"]
+    ann.max_y = temps["max_y"]
     ann.version += 1
     db.commit()
     db.refresh(ann)
@@ -118,6 +122,7 @@ def update_annotation(annotation_id: int, body: AnnotationCreate, db: Session = 
         "t_mean": ann.t_mean,
         "max_position": {"x": temps["max_x"], "y": temps["max_y"]},
         "source": ann.source,
+        "status": ann.status,
         "version": ann.version,
     }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Stage, Layer, Image as KonvaImage, Rect, Transformer, Text, Circle, Line } from 'react-konva';
 import Konva from 'konva';
 import api from '../api/client';
@@ -8,6 +8,7 @@ import TrendChart from '../components/TrendChart';
 
 export default function AnnotationEditor() {
   const { projectId, imageId } = useParams<{ projectId: string; imageId: string }>();
+  const navigate = useNavigate();
   const [image, setImage] = useState<ImageDetail | null>(null);
   const [imgObj, setImgObj] = useState<HTMLImageElement | null>(null);
   const [annotations, setAnnotations] = useState<AnnotationData[]>([]);
@@ -70,13 +71,16 @@ export default function AnnotationEditor() {
   const scaleX = dW / tW;  // thermal → display
   const scaleY = dH / tH;
 
-  // Fit canvas to viewport
-  const maxW = Math.min(window.innerWidth - 40, imgObj.naturalWidth);
-  const maxH = Math.min(window.innerHeight - 160, imgObj.naturalHeight);
-  const fitScale = Math.min(maxW / imgObj.naturalWidth, maxH / imgObj.naturalHeight, 1);
+  // Fit canvas to the recorded display image resolution, not the browser image's
+  // natural size. This keeps the frame aligned to the actual FLIR preview.
+  const imageBaseW = dW;
+  const imageBaseH = dH;
+  const maxW = Math.min(window.innerWidth - 40, imageBaseW);
+  const maxH = Math.min(window.innerHeight - 160, imageBaseH);
+  const fitScale = Math.min(maxW / imageBaseW, maxH / imageBaseH, 1);
 
-  const canvasW = imgObj.naturalWidth * fitScale;
-  const canvasH = imgObj.naturalHeight * fitScale;
+  const canvasW = imageBaseW * fitScale;
+  const canvasH = imageBaseH * fitScale;
 
   // ── Coordinate helpers ───────────────────────────────────────────
 
@@ -217,30 +221,46 @@ export default function AnnotationEditor() {
     loadAnnotations();
   };
 
+  const selectedAnnotation = annotations.find(ann => ann.id === selectedId);
+
   // ── Render ───────────────────────────────────────────────────────
 
   return (
-    <div style={{ padding: 10 }}>
-      <p>
-        <a href="/" style={{ color: '#2563eb' }}>← 返回主页</a>
+    <div
+      className="app-shell app-shell--wide"
+      style={{ '--editor-image-width': `${canvasW}px` } as React.CSSProperties}
+    >
+      <div className="editor-header">
+        <div>
+          <p className="eyebrow">
+        <a href="/">← 返回主页</a>
         {' · '}
-        <a href={`/project/${projectId}`} style={{ color: '#2563eb' }}>进入项目</a>
+        <a href={`/project/${projectId}`}>进入项目</a>
       </p>
-      <h2 style={{ margin: '0 0 2px 0' }}>设备历史测温库</h2>
-      <p style={{ margin: '0 0 10px 0', fontSize: 15, color: '#374151', fontWeight: 600 }}>{image.filename}</p>
-      <p style={{ margin: '0 0 10px 0', fontSize: 13, color: '#666' }}>
-        最高温: {image.t_max?.toFixed(1)}°C
-        {' · '}最低温: {image.t_min?.toFixed(1)}°C
-        {' · '}平均温: {image.t_mean?.toFixed(1)}°C
-        {tW !== dW && (
-          <span style={{ color: '#999', marginLeft: 8 }}>
-            (热分辨率: {tW}×{tH}, 显示: {dW}×{dH})
-          </span>
-        )}
-      </p>
+          <h1 className="page-title">设备历史测温库</h1>
+          <p className="subtle" style={{ margin: '8px 0 0', fontWeight: 650 }}>{image.filename}</p>
+        </div>
+        <div className="editor-summary">
+          <div className="summary-tile summary-tile--hot"><span>最高</span><strong>{image.t_max?.toFixed(1)}°C</strong></div>
+          <div className="summary-tile"><span>最低</span><strong>{image.t_min?.toFixed(1)}°C</strong></div>
+          <div className="summary-tile"><span>平均</span><strong>{image.t_mean?.toFixed(1)}°C</strong></div>
+        </div>
+      </div>
 
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div style={{ border: '1px solid #ccc', background: '#222', flexShrink: 0 }}>
+      <div className="editor-grid">
+        <main className="editor-main">
+        <div className="canvas-toolbar">
+          <div>
+            <strong>图谱标注</strong>
+            <span className="subtle">拖拽空白区域新建框，拖动框体调整位置</span>
+          </div>
+          <div className="legend-row">
+            {tW !== dW && <span>{tW}×{tH} → {dW}×{dH}</span>}
+            <span><i className="legend-dot legend-dot--manual" />手动</span>
+            <span><i className="legend-dot legend-dot--auto" />自动</span>
+          </div>
+        </div>
+        <div className="canvas-frame">
           <Stage
             width={canvasW}
             height={canvasH}
@@ -364,54 +384,99 @@ export default function AnnotationEditor() {
           </Layer>
         </Stage>
       </div>
+      {trendData && trendData.points.length > 0 && (
+        <section className="history-under-canvas">
+          <div className="section-bar">
+            <h2 className="panel__title">历史图谱</h2>
+            <span className="subtle">{trendData.points.length} 次记录</span>
+          </div>
+          <div className="history-strip">
+            {trendData.points.map(p => (
+              <button
+                key={p.image_id}
+                type="button"
+                onClick={() => navigate(`/project/${p.project_id}/image/${p.image_id}`)}
+                className={`history-chip ${p.image_id === Number(imageId) ? 'history-chip--current' : ''}`}
+              >
+                <span>{p.date || '未知日期'}</span>
+                <strong>{p.t_max?.toFixed(1)}°C</strong>
+                <small>{p.project_name || p.filename}</small>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+      </main>
 
       {/* Temperature trend chart — right side */}
-      {trendData && trendData.points && trendData.points.length > 0 && (
-        <div style={{ flex: '1 1 280px', minWidth: 260, maxWidth: 380 }}>
-          <TrendChart
-            trend={trendData}
-            currentImageId={Number(imageId)}
-          />
-        </div>
-      )}
-    </div>
-
-    {/* Annotation list */}
-      <div style={{ marginTop: 16, maxWidth: 600 }}>
-        <h3>标注列表</h3>
-        {annotations.map(ann => (
-          <div
-            key={ann.id}
-            onClick={() => setSelectedId(ann.id)}
-            style={{
-              marginBottom: 8, padding: '8px 12px',
-              background: selectedId === ann.id ? '#e0f2fe' : '#f8f8f8',
-              borderRadius: 4, cursor: 'pointer',
-              border: selectedId === ann.id ? '2px solid #2563eb' : '1px solid transparent',
-            }}
-          >
-            <strong>框 {ann.id}</strong>
-            {ann.source === "auto" && (
-              <span style={{
-                background: '#dbeafe', color: '#1d4ed8', fontSize: 11,
-                padding: '1px 6px', borderRadius: 3, marginLeft: 6, fontWeight: 600,
-              }}>AI</span>
-            )}
-            {' · '}最高 {ann.t_max?.toFixed(1)}°C
-            {' · '}平均 {ann.t_mean?.toFixed(1)}°C
-            {' · '}最低 {ann.t_min?.toFixed(1)}°C
-            <button
-              onClick={(e) => { e.stopPropagation(); handleDelete(ann.id); }}
-              style={{ marginLeft: 12, color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer' }}
-            >
-              删除
-            </button>
-          </div>
-        ))}
-        {annotations.length === 0 && (
-          <div style={{ color: '#999' }}>在热像图上按住鼠标拖拽画框，框选设备区域</div>
+      <aside className="editor-side">
+        {selectedAnnotation && (
+          <section className="panel selected-panel">
+            <div className="panel__head">
+              <h2 className="panel__title">当前标注</h2>
+              {selectedAnnotation.source === "auto" && <span className="ai-badge">AI</span>}
+            </div>
+            <div className="panel__body">
+              <div className="selected-metrics">
+                <div><span>最高</span><strong className="metric-hot">{selectedAnnotation.t_max?.toFixed(1)}°C</strong></div>
+                <div><span>平均</span><strong>{selectedAnnotation.t_mean?.toFixed(1)}°C</strong></div>
+                <div><span>最低</span><strong className="metric-cool">{selectedAnnotation.t_min?.toFixed(1)}°C</strong></div>
+              </div>
+              <button
+                onClick={() => handleDelete(selectedAnnotation.id)}
+                className="btn btn-secondary"
+                style={{ width: '100%', marginTop: 12 }}
+              >
+                删除此标注
+              </button>
+            </div>
+          </section>
         )}
-      </div>
+        {trendData && trendData.points && trendData.points.length > 0 && (
+          <section className="panel" style={{ minWidth: 0 }}>
+            <div className="panel__body">
+            <TrendChart
+              trend={trendData}
+              currentImageId={Number(imageId)}
+            />
+            </div>
+          </section>
+        )}
+
+        <section className="panel annotation-panel">
+          <div className="panel__head">
+            <h2 className="panel__title">标注列表</h2>
+            <span className="status-pill">{annotations.length} 个</span>
+          </div>
+          <div className="panel__body">
+          <div className="annotation-list">
+            {annotations.map(ann => (
+              <div
+                key={ann.id}
+                onClick={() => setSelectedId(ann.id)}
+                className={`annotation-item ${selectedId === ann.id ? 'annotation-item--selected' : ''}`}
+              >
+                <div>
+                  <strong>框 {ann.id}</strong>
+                  {ann.source === "auto" && (
+                    <span className="ai-badge">AI</span>
+                  )}
+                  <span className="annotation-metrics">
+                    <span>最高 {ann.t_max?.toFixed(1)}°C</span>
+                    <span>平均 {ann.t_mean?.toFixed(1)}°C</span>
+                    <span>最低 {ann.t_min?.toFixed(1)}°C</span>
+                  </span>
+                </div>
+              </div>
+            ))}
+            {annotations.length === 0 && (
+              <div className="empty-state">在热像图上按住鼠标拖拽画框，框选设备区域</div>
+            )}
+          </div>
+          </div>
+        </section>
+      </aside>
+    </div>
     </div>
   );
 }

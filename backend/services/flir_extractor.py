@@ -33,8 +33,18 @@ REQUIRED_TAGS = [
 # ── Step 1: Extract metadata ─────────────────────────────────────────
 def extract_metadata(image_path: str) -> dict:
     args = ["exiftool", "-j"] + [f"-{t}" for t in FLIR_TAGS] + [image_path]
-    result = subprocess.run(args, capture_output=True, text=True)
-    data = json.loads(result.stdout)
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, timeout=30)
+    except FileNotFoundError:
+        raise RuntimeError("exiftool not found. Install exiftool or ensure it is on PATH.")
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("exiftool metadata extraction timed out")
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "exiftool metadata extraction failed")
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        raise RuntimeError("exiftool returned invalid JSON")
     if not data:
         raise RuntimeError(f"exiftool returned no data for {image_path}")
     return data[0]
@@ -49,15 +59,28 @@ def extract_raw_thermal(image_path: str) -> np.ndarray:
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp_path = tmp.name
 
-    subprocess.run(
-        ["exiftool", "-b", "-RawThermalImage", image_path],
-        stdout=open(tmp_path, "wb"),
-        check=True,
-    )
+    try:
+        with open(tmp_path, "wb") as out:
+            subprocess.run(
+                ["exiftool", "-b", "-RawThermalImage", image_path],
+                stdout=out,
+                stderr=subprocess.PIPE,
+                check=True,
+                timeout=30,
+            )
 
-    raw_img = Image.open(tmp_path)
-    arr = np.array(raw_img, dtype=np.uint16)
-    os.unlink(tmp_path)
+        raw_img = Image.open(tmp_path)
+        arr = np.array(raw_img, dtype=np.uint16)
+    except FileNotFoundError:
+        raise RuntimeError("exiftool not found. Install exiftool or ensure it is on PATH.")
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("exiftool raw thermal extraction timed out")
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr.decode("utf-8", errors="ignore") if exc.stderr else ""
+        raise RuntimeError(detail.strip() or "exiftool raw thermal extraction failed")
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
     # FLIR byte-order fix
     arr = np.right_shift(arr, 8) + np.left_shift(np.bitwise_and(arr, 0x00FF), 8)

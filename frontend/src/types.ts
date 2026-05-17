@@ -41,7 +41,7 @@ export interface TrendPoint {
 }
 
 export interface EquipmentTrend {
-  equipment_id: number;
+  equipment_id: number | null;
   equipment_name: string;
   area: string | null;
   device_type: string | null;

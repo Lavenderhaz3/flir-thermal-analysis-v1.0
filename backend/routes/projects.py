@@ -2,11 +2,13 @@ import os
 import shutil
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from config import UPLOAD_DIR
 from models.database import get_db
 from models.schema import Project, Image
+from services.file_utils import ensure_under_directory, sanitize_filename, unique_path
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -32,12 +34,20 @@ async def create_project(
     template: UploadFile = File(None),
     db: Session = Depends(get_db),
 ):
+    if model_type not in {choice["value"] for choice in MODEL_CHOICES}:
+        raise HTTPException(status_code=400, detail="Invalid model_type")
+
     template_path = None
     if template and template.filename:
         # Save uploaded template
-        proj_dir = os.path.join(UPLOAD_DIR, "templates", name)
+        safe_project_name = sanitize_filename(name, "project")
+        safe_template_name = sanitize_filename(template.filename, "report.docx")
+        if not safe_template_name.lower().endswith(".docx"):
+            raise HTTPException(status_code=400, detail="Template must be a .docx file")
+        proj_dir = os.path.join(UPLOAD_DIR, "templates", safe_project_name)
         os.makedirs(proj_dir, exist_ok=True)
-        template_path = os.path.join(proj_dir, template.filename)
+        template_path = unique_path(proj_dir, safe_template_name)
+        ensure_under_directory(template_path, UPLOAD_DIR)
         with open(template_path, "wb") as f:
             shutil.copyfileobj(template.file, f)
 
@@ -61,16 +71,22 @@ async def create_project(
 
 @router.get("/")
 def list_projects(db: Session = Depends(get_db)):
-    projects = db.query(Project).order_by(Project.created_at.desc()).all()
+    rows = (
+        db.query(Project, func.count(Image.id).label("image_count"))
+        .outerjoin(Image, Image.project_id == Project.id)
+        .group_by(Project.id)
+        .order_by(Project.created_at.desc())
+        .all()
+    )
     return [
         {
             "id": p.id,
             "name": p.name,
             "model_type": p.model_type,
             "created_at": p.created_at.isoformat(),
-            "image_count": len(p.images),
+            "image_count": image_count,
         }
-        for p in projects
+        for p, image_count in rows
     ]
 
 
@@ -107,8 +123,19 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
     proj = db.query(Project).filter(Project.id == project_id).first()
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
+    project_upload_dir = os.path.join(UPLOAD_DIR, str(project_id))
+    template_path = proj.report_template_path
     db.delete(proj)
     db.commit()
+    if os.path.isdir(project_upload_dir):
+        shutil.rmtree(project_upload_dir, ignore_errors=True)
+    if template_path:
+        try:
+            safe_template_path = ensure_under_directory(template_path, UPLOAD_DIR)
+            if os.path.exists(safe_template_path):
+                os.remove(safe_template_path)
+        except HTTPException:
+            pass
     return {"ok": True}
 
 
@@ -160,8 +187,9 @@ def _stable_preview_url(original_path, project_id, date, equipment, filename):
     """Return a stable preview URL from original_path, falling back to dynamic construction."""
     if original_path:
         try:
-            rel = os.path.relpath(original_path, UPLOAD_DIR)
+            safe_path = ensure_under_directory(original_path, UPLOAD_DIR)
+            rel = os.path.relpath(safe_path, UPLOAD_DIR)
             return f"/uploads/{rel}"
-        except ValueError:
+        except (ValueError, HTTPException):
             pass
     return f"/uploads/{project_id}/{date or 'unknown'}/{equipment or 'unknown'}/{filename}"
